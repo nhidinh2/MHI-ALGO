@@ -1,0 +1,797 @@
+\documentclass[11pt, reqno, psamsfonts]{amsart}
+\pdfoutput=1
+\newtheorem{lemma}{Lemma}
+\newtheorem{sublemma}{Lemma}[lemma]
+
+\usepackage{setspace}
+\onehalfspacing          \usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath} 
+\usepackage{tcolorbox}
+\usepackage{float}
+\usepackage{subcaption}  
+
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{setspace}
+
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{amsmath}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[normalem]{ulem}
+\usepackage[utf8]{inputenc}
+\usepackage[russian, french, english]{babel}
+\newcommand\hmmax{0}
+\newcommand\bmmax{0}
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\usepackage{mathtools}
+\usepackage{tikz}
+\usepackage{amsbsy}
+\usepackage[inline]{enumitem}
+\usepackage{mathrsfs}
+\usetikzlibrary{shapes,snakes}
+\usetikzlibrary{arrows.meta}
+\usetikzlibrary{decorations.pathmorphing}
+\usetikzlibrary{patterns}
+\usetikzlibrary{calc}
+\usepackage{float}
+\usepackage{array}
+\usepackage{subcaption}
+\usepackage{multicol}
+\usepackage{stmaryrd}
+\usepackage{cancel} %to strike through text
+\usepackage{algorithm}
+
+                         
+\usepackage{comment}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+
+\makeatletter
+\algnewcommand{\LineComment}[1]{\Statex \hskip\ALG@thistlm {\color{gray}\texttt{// #1}}}
+\makeatother
+
+\usepackage[T1]{fontenc}
+\usepackage[scaled=0.9]{beramono} % mono font (optional)
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  language=R,
+  basicstyle=\ttfamily\small,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  showstringspaces=false,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color{gray},
+}
+
+\usepackage{lmodern}
+\usepackage{mathabx}
+
+\usepackage{adjustbox}
+\usepackage{upgreek}
+\usepackage{titlesec}
+\usepackage{bbm}
+\usepackage[spacing=true,kerning=true,babel=true,tracking=true]{microtype}
+\usepackage[shortcuts]{extdash}
+\usepackage[foot]{amsaddr}
+\usepackage[left=2cm,right=2cm,top=2cm,bottom=2cm,bindingoffset=0cm]{geometry}
+\usepackage{bm}
+\usepackage{centernot}
+\usepackage{mdframed}
+\usepackage{hyperref}
+\usepackage{mathdots}
+\usepackage{xspace}
+\definecolor{OliveGreen}{HTML}{3C8031}
+\hypersetup{
+    colorlinks=true,%change to true to get colors
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=red,
+    citecolor=OliveGreen,
+}
+\allowdisplaybreaks
+
+\usepackage[backend=biber, style=alphabetic, sorting=nyt, maxnames=100,backref=true, firstinits=true, sortcites = true]{biblatex}
+\addbibresource{references.bib}
+
+\title{The Metropolis--Hastings Sampling Algorithm}
+\date{}
+
+\author{\lsstyle Joshua~Zhang }
+\email{yzhan340@illinois.edu}
+
+\author{\lsstyle Nhi~Dinh }
+\email{nhidinh2@illinois.edu}
+
+\author{\lsstyle Krish~Gandhi}
+\email{krishjg2@illinois.edu}
+
+\author{\lsstyle Chelsea~He-chen}
+\email{chechen2@illinois.edu}
+
+
+\newtheoremstyle{bfnote}%
+{}{}%
+{\slshape}{}%
+{\bfseries}{\bfseries.}%
+{ }%
+{\thmname{#1}\thmnumber{ #2}\thmnote{ \ep{\normalfont{}#3}}}
+
+\theoremstyle{bfnote}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem*{theorem*}{Theorem}
+\newtheorem{prop}[theorem]{Proposition}
+\newtheorem*{prop*}{Proposition}
+\newtheorem{claim}[theorem]{Claim}
+%\newtheorem{subclaim}[equation]{Subclaim}
+\newtheorem{corl}[theorem]{Corollary}
+\newtheorem{conj}[theorem]{Conjecture}
+\newtheorem{fact}[theorem]{Fact}
+\newtheorem{obs}[theorem]{Observation}
+\newtheorem*{corl*}{Corollary}
+
+% \newcounter{ForClaims}[section]
+% \newtheorem{subclaim}{Subclaim}[ForClaims]
+% \renewcommand*{\thesubclaim}{\theForClaims.\alph{subclaim}}
+
+\theoremstyle{definition}
+\newtheorem{defn}[theorem]{Definition}
+\newtheorem*{defn*}{Definition}
+\newtheorem{exmp}[theorem]{Example}
+\newtheorem{remk}[theorem]{Remark}
+\newtheorem{ques}[theorem]{Question}
+\newtheorem{remks}[theorem]{Remarks}
+\newtheorem*{exmp*}{Example}
+
+\theoremstyle{remark}
+\newtheorem*{ques*}{Question}
+\newtheorem*{remk*}{Remark}
+
+\newcommand*{\myproofname}{Proof of claim}
+\newenvironment{claimproof}[1][\myproofname]{\begin{proof}[#1]\renewcommand*{\qedsymbol}{\(\dashv\)}}{\end{proof}}
+
+\renewcommand{\qedsymbol}{$\blacksquare$}
+\newcommand{\0}{\emptyset}
+%other options include \text{\cancel{0}}, \text{\cancel{O}}, \text{\O}, \emptyset, \varnothing
+\newcommand{\set}[1]{\{#1\}}
+\newcommand{\N}{{\mathbb{N}}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\R}{\mathbb{R}}
+\renewcommand{\C}{\mathbb{C}}
+\newcommand{\Q}{\mathbb{Q}}
+\renewcommand{\P}{\mathbb{P}}
+\newcommand{\E}{\mathbb{E}}
+\renewcommand{\epsilon}{\varepsilon}
+\newcommand{\eps}{\epsilon}
+\renewcommand{\phi}{\varphi}
+\renewcommand{\leq}{\leqslant}
+\renewcommand{\geq}{\geqslant}
+\newcommand{\defeq}{\coloneqq}
+\newcommand{\im}{\mathrm{im}}
+\newcommand{\bemph}[1]{{\normalfont#1}} % define how emphasised brackets should look
+\newcommand{\ep}[1]{\bemph{(}#1\bemph{)}} % parentheses
+\newcommand{\eb}[1]{\bemph{[}#1\bemph{]}}
+\newcommand{\red}[1]{{\color{red}#1}}
+\newcommand{\blue}[1]{{\color{blue}#1}}
+\newcommand{\emphdef}[1]{\textbf{\textit{{#1}}}}
+\newcommand{\pto}{\dashrightarrow}
+\newcommand{\emphd}[1]{\emphdef{#1}}
+\newcommand{\blank}{\mathsf{blank}}
+\newcommand{\col}{\mathsf{col}}
+\newcommand{\LLL}{\text{Lov\'asz Local Lemma}\xspace}
+% \numberwithin{equation}{section}
+\newcommand{\dom}{\mathrm{dom}}
+\newcommand{\bbone}{\mathbbm{1}}
+% \newcommand{\ch}{\mathsf{ch}}
+
+% \renewcommand{\thesubsection}{\arabic{section}.\Alph{subsection}}
+% %\usepackage{etoolbox}
+% \titleformat{\section}[block]{\bfseries\scshape\filcenter}{\thesection.}{1ex}{}
+\titleformat{\subsection}[block]{\bfseries}{\thesubsection.}{1ex}{}
+\titleformat{\subsubsection}[runin]{\itshape}{\bfseries\upshape\thesubsubsection.}{1ex}{}[.---]
+
+% \titlespacing*{\section}{0pt}{*3}{*1}
+% \titlespacing*{\subsection}{0pt}{*3}{*1}
+% \titlespacing*{\subsubsection}{0pt}{*1.5}{*0}
+
+\titleformat{\section}[block]{\scshape\filcenter}{\thesection.}{1ex}{}
+% \titleformat{\subsection}[block]{\bfseries}{\thesubsection.}{1ex}{}
+%\titleformat{\subsubsection}[runin]{\bfseries}{\bfseries\upshape\thesubsubsection.}{1ex}{}[.---]
+% \titleformat{\subsubsection}[runin]{\itshape}{\bfseries\upshape\thesubsubsection.}{1ex}{}[.---]
+
+\titlespacing*{\section}{0pt}{*3}{*1}
+\titlespacing*{\subsection}{0pt}{*3}{*1}
+\titlespacing*{\subsubsection}{0pt}{*1.5}{*0}
+
+
+\renewcommand{\mkbibnamefirst}[1]{\textsc{#1}}
+\renewcommand{\mkbibnamelast}[1]{\textsc{#1}}
+\renewcommand{\mkbibnameprefix}[1]{\textsc{#1}}
+\renewcommand{\mkbibnameaffix}[1]{\textsc{#1}}
+\renewcommand{\finentrypunct}{}
+
+\renewbibmacro{in:}{}
+\setlength\bibitemsep{.5\baselineskip}
+
+\renewbibmacro*{volume+number+eid}{%
+	\printfield{volume}%
+	%  \setunit*{\adddot}% DELETED
+	\setunit*{\addnbspace}% NEW (optional); there's also \addnbthinspace
+	\printfield{number}%
+	\setunit{\addcomma\space}%
+	\printfield{eid}}
+%\DeclareFieldFormat[article]{number}{\mkbibparens{#1}}
+
+\DeclareFieldFormat[article]{volume}{\textbf{#1}\space}
+\DeclareFieldFormat[article]{number}{\mkbibparens{#1}}
+
+\DeclareFieldFormat{journaltitle}{#1,}
+\DeclareFieldFormat[thesis]{title}{\mkbibemph{#1}\addperiod}
+\DeclareFieldFormat[article, unpublished, thesis]{title}{\mkbibemph{#1},}
+\DeclareFieldFormat[book]{title}{\mkbibemph{#1}\addperiod}
+\DeclareFieldFormat[unpublished]{howpublished}{#1, }
+
+\DeclareFieldFormat{pages}{#1}
+
+\DeclareFieldFormat[article]{series}{Ser.~#1\addcomma}
+
+\renewcommand*{\bibfont}{\small}
+
+\setlength{\footskip}{1.5\baselineskip}
+
+\setlist{topsep=3pt,itemsep=3pt}
+
+\DeclareRobustCommand{\cyrins}[1]{%
+	\begingroup\fontfamily{cmr}%
+	\foreignlanguage{russian}{#1}%
+	\endgroup
+}
+
+\pagestyle{plain}
+
+\begin{document}
+
+
+
+\maketitle
+\begin{abstract}
+  This report reviews the Metropolis--Hastings (MH) algorithm as a practical Markov chain
+Monte Carlo (MCMC) method for sampling from posterior distributions that are difficult
+to sample from directly. We outline the basic MH construction, illustrate its use on a
+simple example, and examine how tuning choices such as the proposal distribution and
+burn-in affect convergence and the resulting posterior summaries. We also compare its behavior with Gibbs sampling in a Bayesian Normal model. The findings highlight both the flexibility of Metropolis--Hastings and the importance of careful implementation
+when using MCMC in practice.
+\end{abstract}
+
+\section{Introduction}
+
+In many Bayesian and statistical problems, we want to sample from a \emph{target distribution} \(P(\theta)\), often a posterior density known only up to a normalizing constant:
+\( P(\theta) \;\ \propto \;\ p(y \mid \theta) \;\ p(\theta) \). Direct sampling
+from $P(\theta)$ is often difficult, impossible or too computationally expensive, especially in high-dimensional or complex models.
+
+Markov chain Monte Carlo (MCMC) provides a way around this. The basic idea is to construct
+a Markov chain over possible values of $\theta$ in such a way that the chain has
+$P(\theta)$ as its \emph{stationary distribution}. Concretely, we generate a sequence \(\theta_0, \theta_1, \theta_2, \ldots \) so that, as $n \to \infty$, the distribution of $\theta_n$ approaches $P(\theta)$. After an initial burn-in period, the states
+$\theta_n$ behave like dependent draws from $P$, even though we never need to compute the normalizing constant. 
+
+There are many different ways to define a Markov chain with a given stationary distribution.
+One of the most widely used constructions is the \emph{Metropolis--Hastings (MH) algorithm}.
+
+
+\section{The Algorithm}
+
+Suppose that at iteration \(n\) the current state of the Markov chain is
+\(\theta_n\), and we wish to construct the next state \(\theta_{n+1}\). 
+
+\begin{algorithm}[H]
+\caption{Metropolis--Hastings Updating}
+  \begin{flushleft}
+  \(\text{Given the current state } \theta_n \text{, the next state }\theta_{n+1} \text{ is generated in two steps:}\) 
+  \end{flushleft}
+  \begin{enumerate}
+    \item Propose a candidate value $\theta^*$ from $Q(\theta^* \mid \theta_n)$.
+    \item Decide whether to accept or reject $\theta^*$ using an acceptance probability
+          chosen so that $P(\theta)$ is invariant for the resulting Markov chain.
+  \end{enumerate}
+\end{algorithm}
+
+\subsection{Propose a Candidate}
+In the first stage, we specify a \emph{proposal} (or \emph{transition})
+kernel \(Q\), which for each current state \(\theta_n\) defines a
+probability distribution \(Q(\cdot \mid \theta_n)\) on the parameter space.
+We then generate a \emph{candidate} value \(\theta^{*}\) according to this kernel,
+\[
+\theta^{*} \sim 
+\underbrace{Q(\theta^{*} \mid \theta_n)}_{\text{depends on current state } \theta_n}.
+\]
+In principle, many choices of \(Q\) are possible, subject only to mild
+regularity conditions ensuring that the resulting Markov chain is irreducible and aperiodic and hence converges to $P$. A very common choice is a Gaussian random–walk
+distribution
+\[
+  \theta^{*} \mid \theta_n \sim N(\theta_n, \sigma^{2}),
+\]
+that add Normal noise term to the current value $\theta_n$. The variance $\sigma^2$ controls the typical size of these random steps, and therefore strongly affects how quickly the
+Markov chain moves around and mixes.
+\vspace{-1.0em}
+\subsection{Accept or Reject the Proposed Candidate}
+
+After proposing $\theta^*$, we decide whether to accept it or keep the current state $\theta_n$. This is done by computing the \emph{acceptance probability}
+\begin{equation}\label{prob: acceptance}    
+  \alpha(\theta_n,\theta^\ast)
+  = \min\!\left\{
+      1,\;
+      \frac{P(\theta^\ast)\,Q(\theta_n \mid \theta^\ast)}
+           {P(\theta_n)\,Q(\theta^\ast \mid \theta_n)}
+    \right\}. 
+\end{equation}
+The quantity inside the minimum of~\eqref{prob: acceptance} compares two hypothetical transitions. The denominator,
+$P(\theta_n)\,Q(\theta^\ast \mid \theta_n)$, is proportional to the probability of being at
+$\theta_n$ under the target distribution and then proposing a move to $\theta^\ast$; this is
+the probability mass associated with the forward move. The numerator,
+$P(\theta^\ast)\,Q(\theta_n \mid \theta^\ast)$, is proportional to the probability of being
+at $\theta^\ast$ and proposing a move back to $\theta_n$; this corresponds to the reverse
+move. Thus the ratio
+\[
+\frac{P(\theta^*)\,\ Q(\theta_n \mid \theta^*)}
+     {P(\theta_n)\,Q(\theta^* \mid \theta_n)}
+\]
+measures how much more (or less) compatible the proposed state $\theta^*$ is with the target
+distribution, adjusting for any asymmetry in the proposal. If this ratio exceeds one, the new state is more favorable and the proposal is always accepted; otherwise, it is accepted only with probability equal to this ratio. In this way, the algorithm always accepts moves toward higher target density while still allowing occasional moves toward lower-density regions, preventing the chain from becoming trapped.
+
+We may say that $\theta_{n+1} = \theta^\ast$ with probability
+$\alpha(\theta_n,\theta^\ast)$ and $\theta_{n+1} = \theta_n$ with probability
+$1 - \alpha(\theta_n,\theta^\ast)$. This transition from $\theta_n$ to $\theta^\ast$ is computationally implemented by drawing a uniform random
+variable $U \sim \mathrm{Uniform}(0,1)$ and setting
+\[
+  \theta_{n+1} =
+  \begin{cases}
+    \theta^\ast, & \text{if } U \le \alpha(\theta_n,\theta^\ast),\\[4pt]
+    \theta_n,    & \text{otherwise.}
+  \end{cases}
+\]
+This choice of acceptance probability is constructed so that the resulting transition kernel
+\[
+  P(\theta_n \to \theta^*) = Q(\theta^* \mid \theta_n)\,\alpha(\theta_n,\theta^*)
+\]
+satisfies the detailed balance condition with respect to $P(\theta)$ and and therefore has $P$ as its stationary distribution; see,  ~\cite{Tierney1994} for a detailed proof.
+
+\subsection{Tuning Parameters} 
+Beyond selecting an appropriate proposal distribution $Q(\theta^* \mid \theta)$, the practical performance of the Metropolis--Hastings sampler depends critically on tuning choices.
+
+\textbf{Proposal standard deviation}
+The parameter \(\sigma\) controls how far the sampler jump at each step. Small $\sigma$ leads to very slow movement, high autocorrelation, and poor exploration.
+Moderate $\sigma$ gives good acceptance (20--50\%) and efficient mixing.
+Large $\sigma$ causes most proposals to be rejected, making the chain stick and fail to explore. \cite{GewekeTanizaki2003} 
+
+\textbf{Number of samples \(n_{samp}\)}
+The number of MCMC iterations determines how stable the Monte Carlo estimators are. Too few samples result in noisy estimates.
+More samples reduce Monte Carlo error but do not fix poor mixing.
+
+\textbf{Starting value} \(\theta_0\)
+The initial value impacts the early part of the chain. If the initial value is far from the high-density region, burn-in must be long enough for the chain to reach stationary. 
+With good $\sigma$ and adequate burn-in, the effect of $\theta_0$ disappears.
+
+\textbf{Burn-in}
+Number of initial iterations that got discarded to remove dependence on $\theta_0$.
+Too little burn-in keeps bias from starting value.
+Too much burn-in wastes computation but does not harm results. 
+
+\section{Variants and Extensions}
+
+While the Metropolis--Hastings algorithm provides a general and flexible
+framework for sampling from complex target distributions, several important
+variants have been developed to improve efficiency or to accommodate special
+modeling structures. In this section, we describe two widely used extensions:
+the original Metropolis algorithm as a special symmetric case of
+Metropolis--Hastings, and the Metropolis-within-Gibbs sampler.
+
+\subsection{Symmetric Proposal as a Special Case}
+The general acceptance rule described above was introduced to extend the original Metropolis algorithm~\cite{Metropolis1953} to allow for asymmetric proposal distributions. It is helpful to note that the classical Metropolis algorithm arises as a special case of the Metropolis--Hastings framework. In particular, if the proposal distribution is \emph{symmetric}, so that
+\[
+  Q(\theta^* \mid \theta) = Q(\theta \mid \theta^*).
+\]
+Because of this symmetry, the Hastings ratio simplifies dramatically. The
+acceptance probability reduces to
+\[
+  \alpha(\theta, \theta^*) = 
+  \min\!\left\{ 1,\,
+    \frac{P(\theta^*)}{P(\theta)}
+  \right\},
+\]
+which depends only on the relative height of the target density at the
+proposed state versus the current state. This simplification makes the
+original Metropolis scheme conceptually straightforward and computationally
+convenient. However, the restriction to symmetric proposals can limit
+efficiency, particularly in high-dimensional or highly skewed target
+distributions. The general Metropolis--Hastings algorithm  addresses this limitation by allowing asymmetric proposals and correcting for their imbalance through the full acceptance
+ratio.
+
+\subsection{Metropolis-within-Gibbs Sampling}
+Metropolis-within-Gibbs is a hybrid scheme that embeds a Metropolis--Hastings
+update inside a Gibbs sampler. For a given component $\theta_j$, we introduce a
+proposal distribution
+\[
+  Q_j(\theta_j^{*} \mid \theta_j),
+\]
+generate a candidate $\theta_j^{*}$, and accept or reject it using the usual
+Metropolis--Hastings acceptance rule applied to the \emph{conditional} target
+density,
+\[
+  \alpha_j(\theta_j, \theta_j^{*})
+  = \min\!\left\{ 1,\,
+      \frac{
+        \pi(\theta_j^{*} \mid \theta_{-j})\, Q_j(\theta_j \mid \theta_j^{*})
+      }{
+        \pi(\theta_j \mid \theta_{-j})\, Q_j(\theta_j^{*} \mid \theta_j)
+      }
+    \right\}.
+\]
+This allows Gibbs-type updates even when the conditional distributions are not
+available in closed form. Because it updates one block at a time, this approach often mixes well in moderate dimensions. It’s also especially useful for hierarchical/Bayesian models, since we can take advantage of simpler conditional distributions when they’re available. \cite{Ghirmai2015}
+
+
+\section{Illustrative Example: Random-Walk Metropolis--Hastings (Gaussian)}
+In this example we demonstrate how to apply the Metropolis–Hastings (MH) algorithm to draw samples from a one–dimensional target distribution that is known only up to a normalizing constant. The goal is purely illustrative: we construct a simple Markov chain Monte Carlo (MCMC) sampler and study its behavior.
+
+Consider the unnormalized target density
+\[
+f(\theta) = e^{-\theta^{2}}\bigl( 2 + \sin(5\theta) + \sin(2\theta) \bigr),
+\]
+and the corresponding normalized probability density function
+\[
+P(x)
+= \frac{f(\theta)}
+       {\displaystyle \int_{-\infty}^{\infty} f(\theta)\,d\theta }.
+\]
+The target density is deliberately chosen to be non-Gaussian and multimodal, which is due to 
+the oscillatory sine terms. These oscillations make the distribution more challenging for
+a sampler to explore. This is an example of a distribution where the Random-Walk 
+Metropolis--Hastings Algorithm may struggle with mixing when the proposal variance is poorly 
+tuned or when the chain starts in a low density region. As an example case, this will demonstrate
+the algorithm's sensitivity to tuning parameters.
+
+The integral in the denominator is analytically intractable, so direct sampling from
+\(P(\theta)\) is not feasible.  
+To approximate samples from this distribution, we apply the Random-Walk  
+Metropolis--Hastings algorithm \cite{ChibGreenberg1995}.
+\subsection{Random-Walk Metropolis–Hastings Algorithm}
+We construct a Markov chain $\{\theta_n\}_{n \ge 0}$ with stationary distribution
+$P(\theta)$ using a Gaussian random-walk Metropolis--Hastings (MH) algorithm.
+Given the current state $\theta_n$, we generate a proposal
+\[
+  \theta^\star \sim q(\,\cdot \mid \theta_n) = \mathcal{N}(\theta_n, \sigma^2),
+\]
+where $\sigma > 0$ is the proposal standard deviation. Since the proposal
+distribution is symmetric,
+\[
+  q(\theta^\star \mid \theta_n) = q(\theta_n \mid \theta^\star),
+\]
+the Metropolis--Hastings acceptance probability simplifies to
+\[
+  \alpha(\theta_n, \theta^\star)
+  = \min\!\left(1, \frac{P(\theta^\star)}{P(\theta_n)}\right)
+  = \min\!\left(1, \frac{f(\theta^\star)}{f(\theta_n)}\right),
+\]
+At iteration $n$, we proceed as follows:
+\begin{enumerate}
+  \item Compute the acceptance probability
+  \[
+    \alpha_n = \alpha(\theta_n, \theta^\star)
+             = \min\!\left(1, \frac{f(\theta^\star)}{f(\theta_n)}\right).
+  \]
+  \item Draw a uniform random variable $u \sim \mathrm{Uniform}(0,1)$.
+  \item Update the chain according to
+\[
+    \theta_{n+1} =
+    \begin{cases}
+      \theta^\star, & \text{if } u \le \alpha_n, \\[4pt]
+      \theta_n,     & \text{otherwise.}
+    \end{cases}
+\]    
+\end{enumerate}
+This construction satisfies detailed balance with respect to $P$, and hence
+$P$ is invariant for the resulting Markov chain. Under standard regularity
+conditions, the distribution of $\theta_n$ converges to $P$ as
+$n \to \infty$.
+
+\subsection{Computational Implementation}
+We now present a compact implementation of a single Metropolis–Hastings step, corresponding exactly to the update in Section 3.2. 
+
+
+\begin{figure}[ht]
+\centering
+\begin{lstlisting}
+MHstep <- function(theta_current, sig) {
+  theta_star <- rnorm(1, mean = theta_current, sd = sig)  # propose candidate
+  accprob   <- targetdist(theta_star) / targetdist(theta_current)  # acceptance probability
+  accprob   <- min(1, accprob)
+
+  # accept or reject
+  u <- runif(1)
+  if (u <= accprob) {
+    theta_next <- theta_star
+    a <- 1
+  } else {
+    theta_next <- theta_current
+    a <- 0
+  }
+  return(list(theta1 = theta_next, a = a))
+}
+\end{lstlisting}
+\caption{R function implementing one Metropolis--Hastings update step.}
+\label{fig:MHstepR}
+\end{figure}
+
+These routines are iterated to generate the Markov chain $\{\theta_n\}_{n \ge 0}$. Now, to visualize the impact of the tuning parameters, we consider three configurations, the resulting histograms are shown below
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{σ = 1, θ_i = 0.png}\\[0.2cm]
+    \includegraphics[width=0.75\textwidth]{σ = 0.01, θ_i = 0.png}\\[0.2cm]
+    \includegraphics[width=0.75\textwidth]{σ = 1, θ_i = 6.png}
+    \caption{Comparison of three Metropolis--Hastings sampling runs.}
+    \label{fig:mh_comparison}
+\end{figure}
+In the baseline run with $\sigma = 1$, $\theta_0 = 0$, burn-in of 8000 iterations, and $n_{\text{samp}} = 3000$, the resulting histogram closely matches the theoretical shape of $P(\theta)$, indicating good mixing and efficient exploration of the state space. When the proposal scale is reduced to $\sigma = 0.01$, the chain moves extremely slowly; successive draws are highly correlated and the histogram fails to recover the full support of the target density. In contrast, using a poor initial value, $\theta_0 = 6$, with a moderate proposal scale of $\sigma = 1$, leads the chain to spend many early iterations in low-density regions. 
+
+It is also important to consider the role of burn-in in these runs. In this 
+configuration, a burn-in of 8000 is sufficient for the chain to forget its
+initial value and reach the stationary region of the target distribution. 
+However, when $\sigma =0.01$, the chain moves slowly, to the point where
+a long burn-in does not fully compensate for the poor mixing caused by the 
+low variance proposal. In the $\theta_0 = 6$ run, the chain initially remains
+in a low density region for many iterations. This shows a substantial burn-in 
+period is necessary to discard early, non-stationary samples.
+
+The acceptance rates are also very informative. For the baseline configuration
+($\sigma = 1$), the acceptance rate is moderate, which is a characteristic 
+of a well-tuned sampler. When $\sigma = 0.01$, the acceptance rate becomes
+very high, nearing 100\%. However, this leads to slow mixing and high 
+autocorrelation. When the chain is initialized at $\theta_0 = 6$, the 
+acceptance rate is very low during the early iterations. This is caused 
+by the low density regions where the proposals begin. These results show that
+effective sampling requires balancing acceptance rates and proposal step size.
+
+\section{Discussion: Gibbs Sampling versus Metropolis--Hastings}
+
+In this section we compared Gibbs sampling to Metropolis--Hastings (MH) sampler applied to the joint parameter vector $(\theta_1,\theta_2)$. Gibbs sampling is extremely efficient when the full conditional distributions $p(\theta_1 \mid \theta_2, y)$ and $p(\theta_2 \mid \theta_1, y)$ are available in closed form and can be sampled from directly. The main limitation is that once any full conditional ceases to have a simple closed form, standard Gibbs can no longer be applied directly.
+
+By contrast, the plain MH sampler we considered does not require closed-form conditionals: it only needs the joint posterior density $p(\theta_1,\theta_2 \mid y)$ up to a normalizing constant. We propose a joint candidate $(\theta_1^\ast,\theta_2^\ast)$ from a proposal distribution $Q(\theta_1^\ast,\theta_2^\ast \mid \theta_1^{(n)},\theta_2^{(n)})$ and accept it with probability
+\[
+\alpha \;=\;
+\min\!\left(
+1,\;
+\frac{
+p(\theta_1^{*}, \theta_2^{*} \mid y)\,
+Q\!\left( \theta_1^{(n)}, \theta_2^{(n)} \mid \theta_1^{*}, \theta_2^{*} \right)
+}{
+p(\theta_1^{(n)}, \theta_2^{(n)} \mid y)\,
+Q\!\left( \theta_1^{*}, \theta_2^{*} \mid \theta_1^{(n)}, \theta_2^{(n)} \right)
+}
+\right).
+\]
+When the proposal is symmetric, this simplifies to the familiar ratio of posterior densities. This generality makes MH applicable even when no convenient full conditionals exist, but it comes at the cost of having to tune the proposal scale and accepting that some proposed moves will be rejected, which can slow mixing if the proposal is poorly chosen.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of Gibbs Sampling and Metropolis--Hastings}
+\begin{tabular}{p{6cm} p{6cm}}
+\hline
+\textbf{Gibbs Sampling} & \textbf{Metropolis--Hastings (MH)} \\
+\hline
+
+Requires full conditional distributions in closed form. 
+& 
+Does not require full conditionals; only the posterior up to a normalizing constant. \\[0.4cm]
+
+Always accepts updates (acceptance probability = 1). 
+& 
+Acceptance probability $\alpha < 1$ depends on the proposal scale $\sigma$. \\[0.4cm]
+
+Updates parameters \emph{coordinate-wise}: 
+$\theta_1 \mid \theta_2$,  
+$\theta_2 \mid \theta_1$. 
+& 
+Typically updates the \emph{joint vector} $(\theta_1,\theta_2)$ in one step (though component-wise MH is possible). \\[0.4cm]
+
+No tuning required when full conditionals are known. 
+& 
+Requires tuning of proposal variance $\sigma$; poor tuning leads to slow mixing or high rejection rates. \\[0.4cm]
+
+Efficient when conjugacy holds and full conditionals are easy to sample. 
+& 
+More general and applicable when conditionals do not have closed-form distributions. \\
+
+\hline
+\end{tabular}
+\end{table}
+
+Overall, neither method is uniformly “better’’ in all problems. Gibbs sampling is preferred when conjugacy provides simple, tractable full conditionals, allowing for fast, automatic updates with no tuning. Metropolis--Hastings is more flexible and can be used in non-conjugate or higher-dimensional settings where Gibbs is not directly available, but it requires careful design of the proposal distribution to balance exploration (large moves) with reasonable acceptance rates. In practice, it is also common to use Gibbs and Metropolis-Hastings updates, using Gibbs steps for parameters with full conditionals and MH steps for those without like we discussed in Section 3.2.
+
+\section{Illustrative Example: Gibbs Sampling vs. MH Sampling}
+
+We consider Bayesian inference for the Normal model
+\[
+\underbrace{Y_1,\dots,Y_n}_Y\mid\mu,\sigma^2 \stackrel{\text{iid}}{\sim} N(\mu,\sigma^2),
+\]
+with both $\mu$ and $\sigma^2$  unknown. 
+Under semi-conjugate priors, 
+\[
+\mu \sim N(\mu_0,\sigma_0^2), 
+\qquad 
+\sigma^2 \sim \mathrm{InverseGamma}(\alpha,\beta).
+\]
+Although the joint posterior \(p(\mu,\sigma^2 \mid y)\) does not belong to a standard parametric family, the full conditional distributions have closed forms. This enables a two-step Gibbs sampler.
+
+This example should provide a setting to compare Gibbs sampling with the Metropolis--Hastings algorithm. The Normal model with unknown mean and variance is simple enough for the conditional distributions to be available in a closed form and the joint posterior doesn't belong to a standard parametric family. Respectively, this means that the Gibbs sampling will be implemented efficiently and the Metropolis--Hastings sampler must approximate the same distribution with a proposal mechanism. This will allow us to easily see the differences in mixing, tuning requirements, and behavior in both algorithms. 
+
+\subsection{Gibbs Sampler}
+
+The conditional posterior of $\mu$ is Normal:
+\[
+\mu \mid \sigma^2, y \;\sim\;
+N\!\left(
+\frac{\dfrac{n\bar{y}}{\sigma^{2}} + \dfrac{\mu_0}{\sigma_0^{2}}}
+     {\dfrac{n}{\sigma^{2}} + \dfrac{1}{\sigma_0^{2}}},
+\;
+\frac{1}
+     {\dfrac{n}{\sigma^{2}} + \dfrac{1}{\sigma_0^{2}}}
+\right),
+\]
+The conditional posterior of $\sigma^2$ is Inverse-Gamma:
+\[
+\sigma^{2} \mid \mu, y \;\sim\;
+IG\!\left(
+\alpha + \frac{n}{2},
+\;
+\beta + \frac{1}{2}\big[(n-1)s^{2} + n(\bar{y} - \mu)^{2}\big]
+\right).
+\]
+Gibbs sampling replaces the joint sampling problem
+\[
+(\mu, \sigma^{2}) \sim p(\mu, \sigma^2 \mid y)
+\]
+by alternating the following updates:
+\begin{enumerate}
+  \item Sample $\mu$ from its Normal full conditional.
+  \item Sample $\sigma^2$ from its Inverse-Gamma full conditional.
+\end{enumerate}
+This Markov chain converges to the true posterior distribution.
+ 
+The plots in Figure~\ref{fig:my_label} illustrate the mixing behavior of the Gibbs sampler for this model. The trace plot shows that both $\mu$ and $\sigma^2$ move quickly and do not
+get stuck anywhere. This indicates low autocorrelation between
+successive draws. 
+Because each parameter is updated from its exact conditional distribution, this efficient mixing is expected. The density estimates are shaped similarly to the theoretical posterior shapes, meaning the Gibbs sampler explored the target distribution effectively without much tuning.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\textwidth]{Densityplot_gibbs.png}
+    \caption{Trace/Density for Gibbs Sampling}
+    \label{fig:my_label}
+\end{figure}
+
+
+
+\newpage
+\subsection{Metropolis--Hastings Sampler}
+To provide a non-conjugate comparison, we also implement a
+Metropolis--Hastings (MH) sampler targeting the same joint posterior
+\(p(\mu,\sigma^2 \mid y)\). Instead of drawing \(\mu\) and
+\(\sigma^2\) from closed-form full conditionals, we update them jointly
+by proposing a new pair \((\mu^\ast,\sigma^{2\ast})\). Because the
+variance must satisfy \(\sigma^2 > 0\), it is more convenient to work
+with the transformed parameter
+\[
+  \lambda = \log \sigma^2,
+\]
+and to run MH on the unconstrained pair \((\mu,\lambda)\). Proposing
+directly on \(\sigma^2\) would frequently produce negative values, which
+are immediately rejected and therefore lead to very slow mixing. By
+instead proposing on \(\lambda \in \mathbb{R}\) and mapping back via
+\(\sigma^2 = e^{\lambda} > 0\), positivity is automatically enforced
+while the Markov chain can move freely on the real line. \cite{GewekeTanizaki2003}
+When we change variables from \((\mu,\sigma^2)\) to \((\mu,\lambda)\),
+the posterior density must be adjusted by the corresponding Jacobian
+factor. Writing \(\tilde p\) for the density in the transformed
+parameterization, we obtain
+\[
+  \tilde p(\mu,\lambda \mid y)
+    = p(\mu,\sigma^2 = e^{\lambda} \mid y)
+      \left|\frac{d\sigma^2}{d\lambda}\right|
+    = p(\mu,e^{\lambda} \mid y)\,e^{\lambda}.
+\]
+We use a Gaussian random-walk proposal on \((\mu,\lambda)\):
+\[
+  \mu^\ast = \mu + \varepsilon_\mu, \qquad
+  \lambda^\ast = \lambda + \varepsilon_\lambda,
+\]
+where \(\varepsilon_\mu \sim N(0,\tau_\mu^2)\) and
+\(\varepsilon_\lambda \sim N(0,\tau_\lambda^2)\) are independent.  The
+proposed state \((\mu^\ast,\lambda^\ast)\) is accepted with probability
+\[
+  \alpha
+    = \min\left\{1,\,
+        \frac{\tilde p(\mu^\ast,\lambda^\ast \mid y)}
+             {\tilde p(\mu,\lambda \mid y)}
+      \right\}.
+\]
+In practice we work on the log scale,
+\[
+  \log \tilde p(\mu,\lambda \mid y), \qquad
+  \log \tilde p(\mu^\ast,\lambda^\ast \mid y),
+\]
+and then the log-acceptance probability
+\[
+  \log \alpha
+    = \log\!\left(
+        \frac{\tilde p(\mu^\ast,\lambda^\ast \mid y)}
+             {\tilde p(\mu,\lambda \mid y)}
+      \right)
+    = \log \tilde p(\mu^\ast,\lambda^\ast \mid y)
+      - \log \tilde p(\mu,\lambda \mid y).
+\]
+Finally, drawing \(U \sim \mathrm{Uniform}(0,1)\), we accept the
+proposal if
+\[
+  \log U < \log \alpha.
+\]
+
+\subsection{Results}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.6\textwidth]{Posterior(Gibbs V.S. MH).png}
+    \caption{Posterior comparison: Gibbs vs.\ Metropolis--Hastings}
+    \label{fig:posterior_gibbs_mh}
+\end{figure}
+
+As shown in Figure~\ref{fig:posterior_gibbs_mh}, the two curves overlap almost perfectly in both posterior densities of $\mu$ and $\sigma^2$. This means both methods eventually landed on the same posterior distributions. For $\mu$, both methods produced an approximately Normal peak, centered near the sample mean. For $\sigma^2$, the posterior distribution is highly skewed to the right. This reflects Inverse-Gamma structure. The similarity of the plots suggests that the Metropolis--Hastings sampler, when tuned appropriately, mixes well enough to capture the shape of these marginal posteriors.
+
+\begin{figure}[h!]
+    \centering
+    
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Heatmap(Gibbs).png}
+        \caption{Joint posterior heatmap for Gibbs sampling}
+        \label{fig:heatmap_gibbs}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Heatmap(MH).png}
+        \caption{Joint posterior heatmap for Metropolis--Hastings}
+        \label{fig:heatmap_mh}
+    \end{minipage}
+\end{figure}
+
+
+The posterior heatmaps in Figures~\ref{fig:heatmap_gibbs} and
+\ref{fig:heatmap_mh} provide insight into how the samplers explored $\mu$ and $\sigma^{2}$.
+In both panels, the higher-density regions form ellipses. The close alignment of the
+heatmaps indicates that the Metropolis--Hastings sampler successfully arrives at the correct posterior
+correlation and explored the joint parameter space with no evidence of poor mixing, or unvisited regions. 
+These results verify that the Metropolis--Hastings algorithm, even 
+after reparameterizing $\sigma^{2}$ through $\lambda=\log\sigma^{2}$, accurately 
+targets the true posterior and performs consistently with the Gibbs sampler.
+
+\newpage
+\section{Conclusion}
+
+The Metropolis-Hastings algorithm provides an alternative way to sample from complex posterior distributions when direct sampling from the posterior and closed-form conditionals are not available to use. Through examples, we demonstrated how heavily the effectiveness and efficiency of the algorithm rely on its tuning parameters, including scale, burn-in, and initialization of those parameters. The results showed that a symmetric proposal simplifies the acceptance ratio, using the full acceptance ratio and parameter tuning greatly improves the algorithm's efficiency. 
+
+Our comparison between the Metropolis-Hastings algorithm and Gibbs sampling highlighted the strengths of each in different scenarios. While Metropolis-Hastings is more flexible and can be used in more non-conjugate or higher-dimensional cases, Gibbs thrives when full conditionals are available, reducing the need for tuning.
+
+In our final analysis, it's shown that despite requiring tuning and reparameterization, the Metropolis-Hastings sampler produced posterior estimates that were nearly identical to those produced by the Gibbs sampler, suggesting that when tuned properly, Metropolis-Hastings provides as high of an inferential accuracy as more specialized methods while allowing that extra flexibility. Overall, the Metropolis-Hastings algorithm provides a reliable and flexible tool for posterior sampling across a wide range of statistical applications.
+
+\nocite{*}
+\printbibliography
+
+\end{document}
