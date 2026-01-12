@@ -1,0 +1,939 @@
+---
+title: "The Metropolis--Hastings Sampling Algorithm"
+date: ""
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: cosmo
+    highlight: tango
+    fig_width: 10
+    fig_height: 6
+    code_folding: show
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(patchwork)  
+library(mvtnorm)
+library(tidyr)
+set.seed(431)
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center", 
+                      fig.width = 10, fig.height = 6,
+                      warning = FALSE, message = FALSE)
+```
+
+## Abstract
+
+This report studies the theoretical properties and practical mixing behavior of the Metropolis--Hastings (MH) algorithm as a Markov chain Monte Carlo (MCMC) method for sampling from posterior distributions that are difficult to sample from directly. We analyze how proposal scale, burn-in, and parameterization affect acceptance rates, autocorrelation, and convergence through both theoretical discussion and empirical examples. We implement and compare joint vs. block-update (Metropolis-within-Gibbs) schemes in R, using Gibbs sampling as a benchmark when conditionals are tractable. Through a multimodal example and a Bayesian Normal model, we interpret slow mixing through state-space geometry and multi-modal structure, demonstrating how the geometric properties of the target distribution fundamentally determine mixing efficiency. The findings highlight both the flexibility of Metropolis--Hastings and the critical importance of careful implementation, tuning, and scheme selection when using MCMC in practice.
+
+# Introduction
+
+In many Bayesian and statistical problems, we want to sample from a *target distribution* $P(\theta)$, often a posterior density known only up to a normalizing constant: $P(\theta) \propto p(y \mid \theta) p(\theta)$. Direct sampling from $P(\theta)$ is often difficult, impossible or too computationally expensive, especially in high-dimensional or complex models.
+
+Markov chain Monte Carlo (MCMC) provides a way around this. The basic idea is to construct a Markov chain over possible values of $\theta$ in such a way that the chain has $P(\theta)$ as its *stationary distribution*. Concretely, we generate a sequence $\theta_0, \theta_1, \theta_2, \ldots$ so that, as $n \to \infty$, the distribution of $\theta_n$ approaches $P(\theta)$. After an initial burn-in period, the states $\theta_n$ behave like dependent draws from $P$, even though we never need to compute the normalizing constant.
+
+There are many different ways to define a Markov chain with a given stationary distribution. One of the most widely used constructions is the *Metropolis--Hastings (MH) algorithm*.
+
+# The Algorithm
+
+Suppose that at iteration $n$ the current state of the Markov chain is $\theta_n$, and we wish to construct the next state $\theta_{n+1}$.
+
+**Algorithm: Metropolis--Hastings Updating**
+
+Given the current state $\theta_n$, the next state $\theta_{n+1}$ is generated in two steps:
+
+1. Propose a candidate value $\theta^*$ from $Q(\theta^* \mid \theta_n)$.
+2. Decide whether to accept or reject $\theta^*$ using an acceptance probability chosen so that $P(\theta)$ is invariant for the resulting Markov chain.
+
+## Propose a Candidate
+
+In the first stage, we specify a *proposal* (or *transition*) kernel $Q$, which for each current state $\theta_n$ defines a probability distribution $Q(\cdot \mid \theta_n)$ on the parameter space. We then generate a *candidate* value $\theta^{*}$ according to this kernel,
+
+$$\theta^{*} \sim \underbrace{Q(\theta^{*} \mid \theta_n)}_{\text{depends on current state } \theta_n}.$$
+
+In principle, many choices of $Q$ are possible, subject only to mild regularity conditions ensuring that the resulting Markov chain is irreducible and aperiodic and hence converges to $P$. A very common choice is a Gaussian random--walk distribution
+
+$$\theta^{*} \mid \theta_n \sim N(\theta_n, \sigma^{2}),$$
+
+that add Normal noise term to the current value $\theta_n$. The variance $\sigma^2$ controls the typical size of these random steps, and therefore strongly affects how quickly the Markov chain moves around and mixes.
+
+## Accept or Reject the Proposed Candidate
+
+After proposing $\theta^*$, we decide whether to accept it or keep the current state $\theta_n$. This is done by computing the *acceptance probability*
+
+\begin{equation}\label{prob: acceptance}    
+  \alpha(\theta_n,\theta^\ast)
+  = \min\!\left\{
+      1,\;
+      \frac{P(\theta^\ast)\,Q(\theta_n \mid \theta^\ast)}
+           {P(\theta_n)\,Q(\theta^\ast \mid \theta_n)}
+    \right\}. 
+\end{equation}
+
+The quantity inside the minimum of (1) compares two hypothetical transitions. The denominator, $P(\theta_n)\,Q(\theta^\ast \mid \theta_n)$, is proportional to the probability of being at $\theta_n$ under the target distribution and then proposing a move to $\theta^\ast$; this is the probability mass associated with the forward move. The numerator, $P(\theta^\ast)\,Q(\theta_n \mid \theta^\ast)$, is proportional to the probability of being at $\theta^\ast$ and proposing a move back to $\theta_n$; this corresponds to the reverse move. Thus the ratio
+
+$$\frac{P(\theta^*)\, Q(\theta_n \mid \theta^*)}
+     {P(\theta_n)\,Q(\theta^* \mid \theta_n)}$$
+
+measures how much more (or less) compatible the proposed state $\theta^*$ is with the target distribution, adjusting for any asymmetry in the proposal. If this ratio exceeds one, the new state is more favorable and the proposal is always accepted; otherwise, it is accepted only with probability equal to this ratio. In this way, the algorithm always accepts moves toward higher target density while still allowing occasional moves toward lower-density regions, preventing the chain from becoming trapped.
+
+We may say that $\theta_{n+1} = \theta^\ast$ with probability $\alpha(\theta_n,\theta^\ast)$ and $\theta_{n+1} = \theta_n$ with probability $1 - \alpha(\theta_n,\theta^\ast)$. This transition from $\theta_n$ to $\theta^\ast$ is computationally implemented by drawing a uniform random variable $U \sim \mathrm{Uniform}(0,1)$ and setting
+
+$$\theta_{n+1} =
+  \begin{cases}
+    \theta^\ast, & \text{if } U \le \alpha(\theta_n,\theta^\ast),\\[4pt]
+    \theta_n,    & \text{otherwise.}
+  \end{cases}$$
+
+This choice of acceptance probability is constructed so that the resulting transition kernel
+
+$$P(\theta_n \to \theta^*) = Q(\theta^* \mid \theta_n)\,\alpha(\theta_n,\theta^*)$$
+
+satisfies the detailed balance condition with respect to $P(\theta)$ and and therefore has $P$ as its stationary distribution; see, @Tierney1994 for a detailed proof.
+
+## Tuning Parameters
+
+Beyond selecting an appropriate proposal distribution $Q(\theta^* \mid \theta)$, the practical performance of the Metropolis--Hastings sampler depends critically on tuning choices.
+
+**Proposal standard deviation**
+
+The parameter $\sigma$ controls how far the sampler jump at each step. Small $\sigma$ leads to very slow movement, high autocorrelation, and poor exploration. Moderate $\sigma$ gives good acceptance (20--50\%) and efficient mixing. Large $\sigma$ causes most proposals to be rejected, making the chain stick and fail to explore. @GewekeTanizaki2003
+
+**Number of samples $n_{samp}$**
+
+The number of MCMC iterations determines how stable the Monte Carlo estimators are. Too few samples result in noisy estimates. More samples reduce Monte Carlo error but do not fix poor mixing.
+
+**Starting value** $\theta_0$
+
+The initial value impacts the early part of the chain. If the initial value is far from the high-density region, burn-in must be long enough for the chain to reach stationary. With good $\sigma$ and adequate burn-in, the effect of $\theta_0$ disappears.
+
+**Burn-in**
+
+Number of initial iterations that got discarded to remove dependence on $\theta_0$. Too little burn-in keeps bias from starting value. Too much burn-in wastes computation but does not harm results.
+
+# Variants and Extensions
+
+While the Metropolis--Hastings algorithm provides a general and flexible framework for sampling from complex target distributions, several important variants have been developed to improve efficiency or to accommodate special modeling structures. In this section, we describe two widely used extensions: the original Metropolis algorithm as a special symmetric case of Metropolis--Hastings, and the Metropolis-within-Gibbs sampler.
+
+## Symmetric Proposal as a Special Case
+
+The general acceptance rule described above was introduced to extend the original Metropolis algorithm [@Metropolis1953] to allow for asymmetric proposal distributions. It is helpful to note that the classical Metropolis algorithm arises as a special case of the Metropolis--Hastings framework. In particular, if the proposal distribution is *symmetric*, so that
+
+$$Q(\theta^* \mid \theta) = Q(\theta \mid \theta^*).$$
+
+Because of this symmetry, the Hastings ratio simplifies dramatically. The acceptance probability reduces to
+
+$$\alpha(\theta, \theta^*) = 
+  \min\!\left\{ 1,\,
+    \frac{P(\theta^*)}{P(\theta)}
+  \right\},$$
+
+which depends only on the relative height of the target density at the proposed state versus the current state. This simplification makes the original Metropolis scheme conceptually straightforward and computationally convenient. However, the restriction to symmetric proposals can limit efficiency, particularly in high-dimensional or highly skewed target distributions. The general Metropolis--Hastings algorithm addresses this limitation by allowing asymmetric proposals and correcting for their imbalance through the full acceptance ratio.
+
+## Metropolis-within-Gibbs Sampling
+
+Metropolis-within-Gibbs is a hybrid scheme that embeds a Metropolis--Hastings update inside a Gibbs sampler. For a given component $\theta_j$, we introduce a proposal distribution
+
+$$Q_j(\theta_j^{*} \mid \theta_j),$$
+
+generate a candidate $\theta_j^{*}$, and accept or reject it using the usual Metropolis--Hastings acceptance rule applied to the *conditional* target density,
+
+$$\alpha_j(\theta_j, \theta_j^{*})
+  = \min\!\left\{ 1,\,
+      \frac{
+        \pi(\theta_j^{*} \mid \theta_{-j})\, Q_j(\theta_j \mid \theta_j^{*})
+      }{
+        \pi(\theta_j \mid \theta_{-j})\, Q_j(\theta_j^{*} \mid \theta_j)
+      }
+    \right\}.$$
+
+This allows Gibbs-type updates even when the conditional distributions are not available in closed form. Because it updates one block at a time, this approach often mixes well in moderate dimensions. It's also especially useful for hierarchical/Bayesian models, since we can take advantage of simpler conditional distributions when they're available. @Ghirmai2015
+
+# Illustrative Example: Random-Walk Metropolis--Hastings (Gaussian)
+
+In this example we demonstrate how to apply the Metropolis--Hastings (MH) algorithm to draw samples from a one--dimensional target distribution that is known only up to a normalizing constant. The goal is purely illustrative: we construct a simple Markov chain Monte Carlo (MCMC) sampler and study its behavior.
+
+Consider the unnormalized target density
+
+$$f(\theta) = e^{-\theta^{4}/6 + \theta^{2}/2} \cos(\theta^{3}/4),$$
+
+and the corresponding normalized probability density function
+
+$$P(x)
+= \frac{f(\theta)}
+       {\displaystyle \int_{-\infty}^{\infty} f(\theta)\,d\theta }.$$
+
+The target density is deliberately chosen to be non-Gaussian and multimodal, which is due to the oscillatory sine terms. These oscillations create multiple local modes separated by low-density valleys in the state space. From a geometric perspective, this multimodal structure presents significant challenges for MCMC sampling: the chain can become trapped in one mode, with proposals frequently rejected when attempting to cross the low-density barriers between modes. The state-space geometry—characterized by these separated high-density regions—directly impacts mixing efficiency. When the proposal scale $\sigma$ is too small relative to the distance between modes, the chain cannot efficiently traverse these geometric barriers, leading to poor exploration and high autocorrelation. This example demonstrates how the algorithm's sensitivity to tuning parameters is fundamentally tied to the geometric structure of the target distribution.
+
+The integral in the denominator is analytically intractable, so direct sampling from $P(\theta)$ is not feasible. To approximate samples from this distribution, we apply the Random-Walk Metropolis--Hastings algorithm @ChibGreenberg1995.
+
+## Random-Walk Metropolis--Hastings Algorithm
+
+We construct a Markov chain $\{\theta_n\}_{n \ge 0}$ with stationary distribution $P(\theta)$ using a Gaussian random-walk Metropolis--Hastings (MH) algorithm. Given the current state $\theta_n$, we generate a proposal
+
+$$\theta^\star \sim q(\,\cdot \mid \theta_n) = \mathcal{N}(\theta_n, \sigma^2),$$
+
+where $\sigma > 0$ is the proposal standard deviation. Since the proposal distribution is symmetric,
+
+$$q(\theta^\star \mid \theta_n) = q(\theta_n \mid \theta^\star),$$
+
+the Metropolis--Hastings acceptance probability simplifies to
+
+$$\alpha(\theta_n, \theta^\star)
+  = \min\!\left(1, \frac{P(\theta^\star)}{P(\theta_n)}\right)
+  = \min\!\left(1, \frac{f(\theta^\star)}{f(\theta_n)}\right),$$
+
+At iteration $n$, we proceed as follows:
+
+1. Compute the acceptance probability
+  $$\alpha_n = \alpha(\theta_n, \theta^\star)
+             = \min\!\left(1, \frac{f(\theta^\star)}{f(\theta_n)}\right).$$
+2. Draw a uniform random variable $u \sim \mathrm{Uniform}(0,1)$.
+3. Update the chain according to
+$$\theta_{n+1} =
+    \begin{cases}
+      \theta^\star, & \text{if } u \le \alpha_n, \\[4pt]
+      \theta_n,     & \text{otherwise.}
+    \end{cases}$$
+
+This construction satisfies detailed balance with respect to $P$, and hence $P$ is invariant for the resulting Markov chain. Under standard regularity conditions, the distribution of $\theta_n$ converges to $P$ as $n \to \infty$.
+
+## Computational Implementation
+
+We now present a compact implementation of a single Metropolis--Hastings step, corresponding exactly to the update in Section 3.2.
+
+```{r MHstep, echo=TRUE, eval=TRUE}
+# Target distribution (unnormalized)
+targetdist <- function(theta) {
+  exp(-theta^4/6 + theta^2/2) * cos(theta^3/4)
+}
+
+# Single MH update step
+MHstep <- function(theta_current, sig) {
+  theta_star <- rnorm(1, mean = theta_current, sd = sig)  # propose candidate
+  accprob   <- targetdist(theta_star) / targetdist(theta_current)  # acceptance probability
+  accprob   <- min(1, accprob)
+
+  # accept or reject
+  u <- runif(1)
+  if (u <= accprob) {
+    theta_next <- theta_star
+    a <- 1
+  } else {
+    theta_next <- theta_current
+    a <- 0
+  }
+  return(list(theta1 = theta_next, a = a))
+}
+```
+
+**Figure 1:** R function implementing one Metropolis--Hastings update step.
+
+```{r mh-sampler-implementation}
+# Metropolis–Hastings Sampler
+MH_sampler <- function(nsamp, sig, burnin, lag, theta_current) {
+  theta_samples <- numeric(nsamp)
+  acc <- c(accepted = 0, proposed = 0)
+  theta <- theta_current   # starting value
+  # Burn-in
+  for (i in 1:burnin) {
+    step <- MHstep(theta, sig)
+    theta <- step$theta1
+    acc <- acc + c(step$a, 1)
+  }
+  # Main sampling
+  for (i in 1:nsamp) {
+    for (j in 1:lag) {
+      step <- MHstep(theta, sig)
+      theta <- step$theta1
+      acc <- acc + c(step$a, 1)
+    }
+    theta_samples[i] <- theta
+  }
+  return(list(samples = theta_samples, acc = acc))
+}
+
+# Visualization function
+plot_MH <- function(sig, nsamp = NULL, theta_initial = NULL) {
+  
+  # Pull global defaults if user does not override
+  if (is.null(nsamp)) nsamp <- get("nsamp", envir = .GlobalEnv)
+  if (is.null(theta_initial)) theta_initial <- get("theta_initial", envir = .GlobalEnv)
+  
+  # Run MH sampler
+  result <- MH_sampler(
+    nsamp = nsamp,
+    sig = sig,
+    burnin = burnin,
+    lag = lag,
+    theta_current = theta_initial
+  )
+  
+  theta_vals <- result$samples
+  
+  # True normalized density
+  thetas <- seq(-3, 3, length.out = 500)
+  dens <- targetdist(thetas)
+  dens <- dens / sum(dens) / (thetas[2] - thetas[1])
+  
+  df_samples <- data.frame(theta = theta_vals)
+  df_true    <- data.frame(theta = thetas, y = dens)
+  
+  # Histogram + True Density 
+  p1 <- ggplot() +
+    geom_histogram(data = df_samples,
+                   aes(theta, y = ..density.., fill = "Samples"),
+                   bins = 30, color = "black") +
+    geom_line(data = df_true,
+              aes(theta, y, color = "True Density"),
+              size = 1.1) +
+    scale_color_manual(values = c("True Density" = "red")) +
+    scale_fill_manual(values = c("Samples" = "gray80")) +
+    labs(
+      title = paste0("Metropolis–Hastings Sampling (σ = ", sig, ")"),
+      subtitle = paste0(
+        "burn-in = ", burnin,
+        ",  nsamp = ", nsamp,
+        ",  initial θ = ", theta_initial
+      ),
+      x = expression(theta), y = "density",
+      color = "", fill = ""
+    ) +
+    theme_bw(base_size = 14)
+  
+  # Trace Plot
+  df_trace <- data.frame(iter = 1:length(theta_vals), value = theta_vals)
+  
+  p2 <- ggplot(df_trace, aes(iter, value)) +
+    geom_line(color = "black") +
+    labs(
+      title = "Trace Plot",
+      subtitle = paste0(
+        "burn-in = ", burnin,
+        ",  kept samples = ", nsamp,
+        ",  initial θ = ", theta_initial
+      ),
+      y = expression(theta~value),
+      x = "iteration"
+    ) +
+    theme_bw(base_size = 14)
+  
+  # Return stacked plots
+  p1 / p2
+}
+
+# Set parameters
+burnin <- 8000
+lag <- 1
+nsamp <- 50000
+theta_initial <- 0   # global default
+
+# Example runs
+# 1. Well-tuned, centered start
+plot_MH(sig = 1, nsamp = 3000, theta_initial = 0)
+
+# 2. Same σ, bad initial value 
+plot_MH(sig = 1, nsamp = 3000, theta_initial = 6)
+
+# 3. Smaller step size, slower mixing
+plot_MH(sig = 0.01, nsamp = 3000, theta_initial = 0)
+```
+
+These routines are iterated to generate the Markov chain $\{\theta_n\}_{n \ge 0}$. Now, to visualize the impact of the tuning parameters, we consider three configurations, the resulting plots are shown above.
+
+In the baseline run with $\sigma = 1$, $\theta_0 = 0$, burn-in of 8000 iterations, and $n_{\text{samp}} = 3000$, the resulting histogram closely matches the theoretical shape of $P(\theta)$, indicating good mixing and efficient exploration of the state space. When the proposal scale is reduced to $\sigma = 0.01$, the chain moves extremely slowly; successive draws are highly correlated and the histogram fails to recover the full support of the target density. In contrast, using a poor initial value, $\theta_0 = 6$, with a moderate proposal scale of $\sigma = 1$, leads the chain to spend many early iterations in low-density regions.
+
+It is also important to consider the role of burn-in in these runs. In this configuration, a burn-in of 8000 is sufficient for the chain to forget its initial value and reach the stationary region of the target distribution. However, when $\sigma =0.01$, the chain moves slowly, to the point where a long burn-in does not fully compensate for the poor mixing caused by the low variance proposal. In the $\theta_0 = 6$ run, the chain initially remains in a low density region for many iterations. This shows a substantial burn-in period is necessary to discard early, non-stationary samples.
+
+The acceptance rates are also very informative. For the baseline configuration ($\sigma = 1$), the acceptance rate is moderate, which is a characteristic of a well-tuned sampler. When $\sigma = 0.01$, the acceptance rate becomes very high, nearing 100\%. However, this leads to slow mixing and high autocorrelation. When the chain is initialized at $\theta_0 = 6$, the acceptance rate is very low during the early iterations. This is caused by the low density regions where the proposals begin. These results show that effective sampling requires balancing acceptance rates and proposal step size.
+
+**Geometric Interpretation of Slow Mixing**
+
+The multimodal structure of this target distribution provides a clear geometric explanation for the observed mixing behavior. The state space can be visualized as a landscape with multiple peaks (modes) separated by valleys (low-density regions). When $\sigma = 0.01$, the proposal steps are too small relative to the typical distance between modes. Geometrically, this means the chain takes many tiny steps, creating a "random walk" that rarely crosses the valleys between modes. The high acceptance rate reflects that most proposals stay within the same mode, but this local exploration comes at the cost of global exploration—the chain fails to visit all modes, leading to biased sampling.
+
+Conversely, when initialized at $\theta_0 = 6$ (a low-density region), the geometric interpretation is that the chain starts in a valley. Most proposals from this location will also land in low-density regions, resulting in low acceptance rates. The chain must take many steps before it reaches a high-density mode, explaining the need for substantial burn-in. The state-space geometry—specifically the location of modes relative to the starting point and the proposal scale—directly determines the mixing efficiency and convergence behavior of the sampler.
+
+# Discussion: Gibbs Sampling versus Metropolis--Hastings
+
+In this section we compared Gibbs sampling to Metropolis--Hastings (MH) sampler applied to the joint parameter vector $(\theta_1,\theta_2)$. Gibbs sampling is extremely efficient when the full conditional distributions $p(\theta_1 \mid \theta_2, y)$ and $p(\theta_2 \mid \theta_1, y)$ are available in closed form and can be sampled from directly. The main limitation is that once any full conditional ceases to have a simple closed form, standard Gibbs can no longer be applied directly.
+
+By contrast, the plain MH sampler we considered does not require closed-form conditionals: it only needs the joint posterior density $p(\theta_1,\theta_2 \mid y)$ up to a normalizing constant. We propose a joint candidate $(\theta_1^\ast,\theta_2^\ast)$ from a proposal distribution $Q(\theta_1^\ast,\theta_2^\ast \mid \theta_1^{(n)},\theta_2^{(n)})$ and accept it with probability
+
+$$\alpha \;=\;
+\min\!\left(
+1,\;
+\frac{
+p(\theta_1^{*}, \theta_2^{*} \mid y)\,
+Q\!\left( \theta_1^{(n)}, \theta_2^{(n)} \mid \theta_1^{*}, \theta_2^{*} \right)
+}{
+p(\theta_1^{(n)}, \theta_2^{(n)} \mid y)\,
+Q\!\left( \theta_1^{*}, \theta_2^{*} \mid \theta_1^{(n)}, \theta_2^{(n)} \right)
+}
+\right).$$
+
+When the proposal is symmetric, this simplifies to the familiar ratio of posterior densities. This generality makes MH applicable even when no convenient full conditionals exist, but it comes at the cost of having to tune the proposal scale and accepting that some proposed moves will be rejected, which can slow mixing if the proposal is poorly chosen.
+
+| **Gibbs Sampling** | **Metropolis--Hastings (MH)** |
+|:-------------------|:------------------------------|
+| Requires full conditional distributions in closed form. | Does not require full conditionals; only the posterior up to a normalizing constant. |
+| Always accepts updates (acceptance probability = 1). | Acceptance probability $\alpha < 1$ depends on the proposal scale $\sigma$. |
+| Updates parameters *coordinate-wise*: $\theta_1 \mid \theta_2$, $\theta_2 \mid \theta_1$. | Typically updates the *joint vector* $(\theta_1,\theta_2)$ in one step (though component-wise MH is possible). |
+| No tuning required when full conditionals are known. | Requires tuning of proposal variance $\sigma$; poor tuning leads to slow mixing or high rejection rates. |
+| Efficient when conjugacy holds and full conditionals are easy to sample. | More general and applicable when conditionals do not have closed-form distributions. |
+
+**Table 1:** Comparison of Gibbs Sampling and Metropolis--Hastings
+
+Overall, neither method is uniformly "better" in all problems. Gibbs sampling is preferred when conjugacy provides simple, tractable full conditionals, allowing for fast, automatic updates with no tuning. Metropolis--Hastings is more flexible and can be used in non-conjugate or higher-dimensional settings where Gibbs is not directly available, but it requires careful design of the proposal distribution to balance exploration (large moves) with reasonable acceptance rates. In practice, it is also common to use Gibbs and Metropolis-Hastings updates, using Gibbs steps for parameters with full conditionals and MH steps for those without like we discussed in Section 3.2.
+
+**Joint vs. Block-Update Schemes in Metropolis--Hastings**
+
+An important practical consideration is whether to update all parameters jointly in a single MH step or to update them in blocks (component-wise). In our Normal model example, we implemented and compared both approaches: a *joint* MH sampler that proposes both $(\mu^\ast, \lambda^\ast)$ simultaneously, and a *block-update* scheme (Metropolis-within-Gibbs) that alternates between updating $\mu$ conditional on $\lambda$ and updating $\lambda$ conditional on $\mu$.
+
+The joint update scheme requires tuning two proposal scales ($\tau_\mu$ and $\tau_\lambda$) and must navigate the joint geometry of the posterior. If the posterior exhibits strong correlation between $\mu$ and $\lambda$, joint proposals that ignore this correlation may have low acceptance rates. The block-update scheme, by updating one component at a time, can adapt more naturally to the conditional structure and allows for component-specific tuning. However, it may require more iterations to explore the joint space, and the mixing between components depends on the correlation structure.
+
+In our implementations, we used independent Gaussian proposals for both schemes. The geometric interpretation is that the joint scheme makes isotropic proposals in the $(\mu, \lambda)$ space, while the block-update scheme updates along coordinate axes. When the posterior has elliptical contours (as seen in the heatmaps), the joint scheme can more directly traverse the elliptical contours, while the block-update scheme may need to "zigzag" along coordinate axes. The empirical comparison below reveals how these geometric considerations translate into differences in acceptance rates, autocorrelation, and mixing efficiency.
+
+# Illustrative Example: Gibbs Sampling vs. MH Sampling
+
+We consider Bayesian inference for the Normal model
+
+$$\underbrace{Y_1,\dots,Y_n}_Y\mid\mu,\sigma^2 \stackrel{\text{iid}}{\sim} N(\mu,\sigma^2),$$
+
+with both $\mu$ and $\sigma^2$ unknown. Under semi-conjugate priors,
+
+$$\mu \sim N(\mu_0,\sigma_0^2), 
+\qquad 
+\sigma^2 \sim \mathrm{InverseGamma}(\alpha,\beta).$$
+
+Although the joint posterior $p(\mu,\sigma^2 \mid y)$ does not belong to a standard parametric family, the full conditional distributions have closed forms. This enables a two-step Gibbs sampler.
+
+This example should provide a setting to compare Gibbs sampling with the Metropolis--Hastings algorithm. The Normal model with unknown mean and variance is simple enough for the conditional distributions to be available in a closed form and the joint posterior doesn't belong to a standard parametric family. Respectively, this means that the Gibbs sampling will be implemented efficiently and the Metropolis--Hastings sampler must approximate the same distribution with a proposal mechanism. This will allow us to easily see the differences in mixing, tuning requirements, and behavior in both algorithms.
+
+## Gibbs Sampler
+
+The conditional posterior of $\mu$ is Normal:
+
+$$\mu \mid \sigma^2, y \;\sim\;
+N\!\left(
+\frac{\dfrac{n\bar{y}}{\sigma^{2}} + \dfrac{\mu_0}{\sigma_0^{2}}}
+     {\dfrac{n}{\sigma^{2}} + \dfrac{1}{\sigma_0^{2}}},
+\;
+\frac{1}
+     {\dfrac{n}{\sigma^{2}} + \dfrac{1}{\sigma_0^{2}}}
+\right),$$
+
+The conditional posterior of $\sigma^2$ is Inverse-Gamma:
+
+$$\sigma^{2} \mid \mu, y \;\sim\;
+IG\!\left(
+\alpha + \frac{n}{2},
+\;
+\beta + \frac{1}{2}\big[(n-1)s^{2} + n(\bar{y} - \mu)^{2}\big]
+\right).$$
+
+Gibbs sampling replaces the joint sampling problem
+
+$$(\mu, \sigma^{2}) \sim p(\mu, \sigma^2 \mid y)$$
+
+by alternating the following updates:
+
+1. Sample $\mu$ from its Normal full conditional.
+2. Sample $\sigma^2$ from its Inverse-Gamma full conditional.
+
+This Markov chain converges to the true posterior distribution.
+
+```{r gibbs-implementation}
+# Data summary
+n    <- 24
+ybar <- 7.8730           # sample mean
+s     <- 0.05353         # sample sd
+
+# Prior parameters
+mu0       <- 7.9876      # prior mean for mu
+sigma0.2  <- 0.000625    # prior variance of mu
+alpha     <- 2.5         # IG(alpha, beta)
+beta      <- 0.0043
+
+# Run Gibbs sampler
+Nsim <- 100000               # total draws
+mus <- numeric(Nsim)         # store mu draws
+sigma2 <- numeric(Nsim)      # store sigma^2 draws
+
+# Initial values
+mus[1] <- 8
+SSE1   <- (n-1)*s^2 + n*(ybar - mus[1])^2
+sigma2[1] <- 1 / rgamma(1, n/2 + alpha, SSE1/2 + beta)
+
+# Gibbs updates
+for (k in 2:Nsim) {
+  
+  # 1. Sample mu | sigma^2, y
+  var_mu  <- 1 / (n / sigma2[k-1] + 1 / sigma0.2)
+  mean_mu <- var_mu * (n*ybar / sigma2[k-1] + mu0 / sigma0.2)
+  mus[k] <- rnorm(1, mean_mu, sqrt(var_mu))
+  
+  # 2. Sample sigma^2 | mu, y
+  SSE <- (n-1)*s^2 + n*(ybar - mus[k])^2
+  sigma2[k] <- 1 / rgamma(1, n/2 + alpha, SSE/2 + beta)
+}
+
+# Posterior summaries
+cat("Posterior mean(mu):", mean(mus), "\n")
+cat("Posterior sd(mu):",   sd(mus), "\n")
+cat("95% CI for mu:\n"); print(quantile(mus, c(0.025, 0.975)))
+cat("\nPosterior mean(sigma^2):", mean(sigma2), "\n")
+cat("95% CI for sigma^2:\n"); print(quantile(sigma2, c(0.025, 0.975)))
+
+# Trace plots
+trace_mu <- ggplot(data.frame(iter = 1:Nsim, mu = mus),
+                   aes(iter, mu)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Trace Plot for μ",
+       x = "Iteration", y = expression(mu)) +
+  theme_bw(14)
+trace_sigma2 <- ggplot(data.frame(iter = 1:Nsim, sigma2 = sigma2),
+                       aes(iter, sigma2)) +
+  geom_line(color = "firebrick") +
+  labs(title = expression("Trace Plot for " * sigma^2),
+       x = "Iteration", y = expression(sigma^2)) +
+  theme_bw(14)
+
+# Posterior density plots
+dens_mu <- ggplot(data.frame(mu = mus), aes(mu)) +
+  geom_density(fill = "steelblue", alpha = 0.4) +
+  geom_vline(xintercept = mean(mus), color = "blue", linetype = 2) +
+  labs(title = "Posterior Density of μ",
+       x = expression(mu), y = "Density") +
+  theme_bw(14)
+dens_sigma2 <- ggplot(data.frame(sigma2 = sigma2), aes(sigma2)) +
+  geom_density(fill = "firebrick", alpha = 0.4) +
+  geom_vline(xintercept = mean(sigma2), color = "red", linetype = 2) +
+  labs(title = "Posterior Density of σ²",
+       x = expression(sigma^2), y = "Density") +
+  theme_bw(14)
+
+# Combined panels
+(trace_mu | trace_sigma2) / (dens_mu | dens_sigma2)
+```
+
+The plots in Figure 2 illustrate the mixing behavior of the Gibbs sampler for this model. The trace plot shows that both $\mu$ and $\sigma^2$ move quickly and do not get stuck anywhere. This indicates low autocorrelation between successive draws. Because each parameter is updated from its exact conditional distribution, this efficient mixing is expected. The density estimates are shaped similarly to the theoretical posterior shapes, meaning the Gibbs sampler explored the target distribution effectively without much tuning.
+
+## Metropolis--Hastings Sampler: Joint Update Scheme
+
+To provide a non-conjugate comparison, we also implement a Metropolis--Hastings (MH) sampler targeting the same joint posterior $p(\mu,\sigma^2 \mid y)$. We consider a *joint update scheme*, where instead of drawing $\mu$ and $\sigma^2$ from closed-form full conditionals, we update them jointly by proposing a new pair $(\mu^\ast,\sigma^{2\ast})$ in a single MH step. This joint approach requires tuning the proposal distribution for the entire parameter vector simultaneously. Because the variance must satisfy $\sigma^2 > 0$, it is more convenient to work with the transformed parameter
+
+$$\lambda = \log \sigma^2,$$
+
+and to run MH on the unconstrained pair $(\mu,\lambda)$. Proposing directly on $\sigma^2$ would frequently produce negative values, which are immediately rejected and therefore lead to very slow mixing. By instead proposing on $\lambda \in \mathbb{R}$ and mapping back via $\sigma^2 = e^{\lambda} > 0$, positivity is automatically enforced while the Markov chain can move freely on the real line. @GewekeTanizaki2003
+
+When we change variables from $(\mu,\sigma^2)$ to $(\mu,\lambda)$, the posterior density must be adjusted by the corresponding Jacobian factor. Writing $\tilde{p} \;\ $ for the density in the transformed parameterization, we obtain
+
+$$\tilde{p} \;\ (\mu,\lambda \mid y)
+    = p(\mu,\sigma^2 = e^{\lambda} \mid y)
+      \left|\frac{d\sigma^2}{d\lambda}\right|
+    = p(\mu,e^{\lambda} \mid y)\,e^{\lambda}.$$
+
+We use a Gaussian random-walk proposal on $(\mu,\lambda)$:
+
+$$\mu^\ast = \mu + \varepsilon_\mu, \qquad
+  \lambda^\ast = \lambda + \varepsilon_\lambda,$$
+
+where $\varepsilon_\mu \sim N(0,\tau_\mu^2)$ and $\varepsilon_\lambda \sim N(0,\tau_\lambda^2)$ are independent. The proposed state $(\mu^\ast,\lambda^\ast)$ is accepted with probability
+
+$$\alpha
+    = \min\left\{1,\,
+        \frac{\tilde{p} \;\ (\mu^\ast,\lambda^\ast \mid y)}
+             {\tilde{p} \;\ (\mu,\lambda \mid y)}
+      \right\}.$$
+
+In practice we work on the log scale,
+
+$$\log \tilde{p} \;\ (\mu,\lambda \mid y), \qquad
+  \log \tilde{p} \;\ (\mu^\ast,\lambda^\ast \mid y),$$
+
+and then the log-acceptance probability
+
+$$\log \alpha
+    = \log\!\left(
+        \frac{\tilde{p} \;\ (\mu^\ast,\lambda^\ast \mid y)}
+             {\tilde{p} \;\ (\mu,\lambda \mid y)}
+      \right)
+    = \log \tilde{p} \;\ (\mu^\ast,\lambda^\ast \mid y)
+      - \log \tilde{p} \;\ (\mu,\lambda \mid y).$$
+
+Finally, drawing $U \sim \mathrm{Uniform}(0,1)$, we accept the proposal if
+
+$$\log U < \log \alpha.$$
+
+**Block-Update (Metropolis-within-Gibbs) Scheme Implementation**
+
+We also implement a *block-update* scheme (Metropolis-within-Gibbs) that updates $\mu$ and $\lambda$ separately in alternating steps. In this approach, we alternate between:
+
+1. **Update $\mu$ given $\lambda$**: Propose $\mu^\ast \sim N(\mu, \tau_\mu^2)$ and accept with probability
+   $$\alpha_\mu = \min\left\{1, \frac{\tilde{p} \;\ (\mu^\ast, \lambda \mid y)}{\tilde{p} \;\ (\mu, \lambda \mid y)}\right\}.$$
+
+2. **Update $\lambda$ given $\mu$**: Propose $\lambda^\ast \sim N(\lambda, \tau_\lambda^2)$ and accept with probability
+   $$\alpha_\lambda = \min\left\{1, \frac{\tilde{p} \;\ (\mu, \lambda^\ast \mid y)}{\tilde{p} \;\ (\mu, \lambda \mid y)}\right\}.$$
+
+The block-update scheme can be more efficient when the conditional distributions are well-behaved, as it allows for component-specific tuning. However, when parameters are highly correlated, block updates may mix slowly because updating one component at a time may not efficiently explore the joint space. The joint update scheme can better handle correlation by proposing moves that account for the joint structure, though it requires careful tuning of both proposal scales simultaneously. The empirical comparison below quantifies these trade-offs.
+
+```{r mh-joint-implementation}
+# Log-posterior for (mu, log_sigma2)
+log_post <- function(mu, log_sigma2) {
+  sigma2 <- exp(log_sigma2)
+  
+  # SSE(mu) using sufficient stats
+  SSE <- (n - 1)*s^2 + n*(ybar - mu)^2
+  
+  # log-likelihood: N(mu, sigma2) for n observations
+  lp_y <- -(n/2) * log(2*pi*sigma2) - SSE/(2*sigma2)
+  
+  # prior for mu ~ N(mu0, sigma0^2)
+  lp_mu <- dnorm(mu, mean = mu0, sd = sqrt(sigma0.2), log = TRUE)
+  
+  # prior for sigma2 ~ IG(alpha, beta), up to constants:
+  # p(sigma2) ∝ (sigma2)^-(alpha+1) exp(-beta/sigma2)
+  lp_s2 <- -(alpha + 1)*log(sigma2) - beta/sigma2
+  
+  # Jacobian for transform sigma2 = exp(log_sigma2)
+  lp_jac <- log_sigma2
+  return(lp_y + lp_mu + lp_s2 + lp_jac)
+} 
+
+# MH sampler for joint update
+mh_sampler <- function(Nsim, start_mu, start_log_s2,
+                       prop_sd_mu, prop_sd_log_s2) {
+  mu     <- numeric(Nsim)
+  log_s2 <- numeric(Nsim)
+  mu[1]     <- start_mu
+  log_s2[1] <- start_log_s2
+  acc <- 0
+  
+  for (k in 2:Nsim) {
+    # Propose new (mu, log_sigma2) with Gaussian random walk
+    mu_prop     <- rnorm(1, mean = mu[k-1],     sd = prop_sd_mu)
+    log_s2_prop <- rnorm(1, mean = log_s2[k-1], sd = prop_sd_log_s2)
+    
+    # Log acceptance ratio (symmetric proposal ⇒ q cancels)
+    log_alpha <- log_post(mu_prop, log_s2_prop) -
+                 log_post(mu[k-1], log_s2[k-1])
+    
+    if (log(runif(1)) < log_alpha) {
+      # accept
+      mu[k]     <- mu_prop
+      log_s2[k] <- log_s2_prop
+      acc <- acc + 1
+    } else {
+      # reject (stay at previous)
+      mu[k]     <- mu[k-1]
+      log_s2[k] <- log_s2[k-1]
+    }
+  }
+  
+  list(mu = mu,
+       sigma2 = exp(log_s2),
+       acc_rate = acc / (Nsim - 1))
+}
+
+# Run MH sampler
+mh_out <- mh_sampler(
+  Nsim          = Nsim,
+  start_mu      = mus[1],
+  start_log_s2  = log(sigma2[1]),
+  prop_sd_mu    = 0.005,   # tune these
+  prop_sd_log_s2 = 0.05
+)
+
+cat("MH (joint) acceptance rate:", mh_out$acc_rate, "\n")
+```
+
+### Metropolis--Hastings Sampler: Block-Update Scheme
+
+We now implement a *block-update* scheme (Metropolis-within-Gibbs) that updates $\mu$ and $\lambda$ separately in alternating steps. This approach allows for component-specific tuning and can be more efficient when the conditional structure is well-behaved.
+
+```{r mh-block-implementation}
+# MH sampler for block-update (Metropolis-within-Gibbs)
+mh_block_sampler <- function(Nsim, start_mu, start_log_s2,
+                            prop_sd_mu, prop_sd_log_s2) {
+  mu     <- numeric(Nsim)
+  log_s2 <- numeric(Nsim)
+  mu[1]     <- start_mu
+  log_s2[1] <- start_log_s2
+  acc_mu <- 0
+  acc_lambda <- 0
+  
+  for (k in 2:Nsim) {
+    # Block 1: Update mu given current lambda
+    mu_prop <- rnorm(1, mean = mu[k-1], sd = prop_sd_mu)
+    log_alpha_mu <- log_post(mu_prop, log_s2[k-1]) -
+                    log_post(mu[k-1], log_s2[k-1])
+    
+    if (log(runif(1)) < log_alpha_mu) {
+      mu[k] <- mu_prop
+      acc_mu <- acc_mu + 1
+    } else {
+      mu[k] <- mu[k-1]
+    }
+    
+    # Block 2: Update lambda given current mu
+    log_s2_prop <- rnorm(1, mean = log_s2[k-1], sd = prop_sd_log_s2)
+    log_alpha_lambda <- log_post(mu[k], log_s2_prop) -
+                        log_post(mu[k], log_s2[k-1])
+    
+    if (log(runif(1)) < log_alpha_lambda) {
+      log_s2[k] <- log_s2_prop
+      acc_lambda <- acc_lambda + 1
+    } else {
+      log_s2[k] <- log_s2[k-1]
+    }
+  }
+  
+  list(mu = mu,
+       sigma2 = exp(log_s2),
+       acc_rate_mu = acc_mu / (Nsim - 1),
+       acc_rate_lambda = acc_lambda / (Nsim - 1),
+       acc_rate_overall = (acc_mu + acc_lambda) / (2 * (Nsim - 1)))
+}
+
+# Run block-update MH sampler with same tuning parameters
+mh_block_out <- mh_block_sampler(
+  Nsim          = Nsim,
+  start_mu      = mus[1],
+  start_log_s2  = log(sigma2[1]),
+  prop_sd_mu    = 0.005,   # same as joint update
+  prop_sd_log_s2 = 0.05
+)
+
+cat("MH (block) acceptance rate for μ:", mh_block_out$acc_rate_mu, "\n")
+cat("MH (block) acceptance rate for λ:", mh_block_out$acc_rate_lambda, "\n")
+cat("MH (block) overall acceptance rate:", mh_block_out$acc_rate_overall, "\n")
+```
+
+## Results
+
+The posterior density comparisons and heatmaps are shown in the comparison plots below. As shown in the plots, the curves overlap almost perfectly in both posterior densities of $\mu$ and $\sigma^2$ across all three methods (Gibbs, MH Joint, and MH Block). This means all methods eventually landed on the same posterior distributions. For $\mu$, all methods produced an approximately Normal peak, centered near the sample mean. For $\sigma^2$, the posterior distribution is highly skewed to the right. This reflects Inverse-Gamma structure. The similarity of the plots suggests that the Metropolis--Hastings samplers, when tuned appropriately, mix well enough to capture the shape of these marginal posteriors.
+
+The posterior heatmaps provide insight into how the samplers explored $\mu$ and $\sigma^{2}$. In all panels, the higher-density regions form ellipses. The close alignment of the heatmaps indicates that both the joint and block-update Metropolis--Hastings samplers successfully arrive at the correct posterior correlation and explore the joint parameter space with no evidence of poor mixing or unvisited regions. These results verify that both MH schemes, even after reparameterizing $\sigma^{2}$ through $\lambda=\log\sigma^{2}$, accurately target the true posterior and perform consistently with the Gibbs sampler.
+
+The elliptical shape of the posterior contours reveals the geometric structure of the state space. The joint MH sampler, using isotropic Gaussian proposals, must navigate this elliptical geometry. The block-update scheme updates along coordinate axes ($\mu$ and $\lambda$), which may be less efficient when the posterior is correlated (non-axis-aligned ellipses), as proposals would need to "zigzag" to explore the joint space. The joint update scheme, by proposing moves in both dimensions simultaneously, can more directly traverse the elliptical contours, though this requires careful tuning to match the scale and correlation structure of the target.
+
+**Comparison of Joint vs. Block-Update Schemes**
+
+The empirical comparison reveals important differences between the two MH schemes. The acceptance rates show that the block-update scheme typically achieves higher acceptance rates for individual components, as each component is updated conditional on the other, allowing for more targeted proposals. However, the overall efficiency depends on the autocorrelation structure: the joint scheme may have lower acceptance rates but can make larger moves in the joint space, potentially reducing autocorrelation. The autocorrelation analysis (shown in the ACF plots) quantifies these differences, revealing how the geometric structure of the posterior and the update scheme interact to determine mixing efficiency. When parameters are highly correlated, the joint scheme's ability to propose moves that account for the correlation structure can lead to better mixing, despite potentially lower acceptance rates. Conversely, when the conditional structure is well-behaved, the block-update scheme's component-specific tuning can be advantageous.
+
+```{r comparison-plots}
+# Comparison data frame including block-update
+df_comp <- data.frame(
+  iter          = 1:Nsim,
+  gibbs_mu      = mus,
+  mh_joint_mu   = mh_out$mu,
+  mh_block_mu   = mh_block_out$mu,
+  gibbs_sigma2  = sigma2,
+  mh_joint_sigma2 = mh_out$sigma2,
+  mh_block_sigma2 = mh_block_out$sigma2
+)
+
+# Trace Plot comparison (all three methods)
+trace_mu_all <- ggplot(df_comp) +
+  geom_line(aes(iter, gibbs_mu, colour = "Gibbs"), alpha = 0.8) +
+  geom_line(aes(iter, mh_joint_mu, colour = "MH Joint"), alpha = 0.7) +
+  geom_line(aes(iter, mh_block_mu, colour = "MH Block"), alpha = 0.7) +
+  scale_colour_manual(values = c("Gibbs" = "steelblue",
+                                 "MH Joint" = "orange",
+                                 "MH Block" = "purple")) +
+  labs(title = "Trace Plot for μ: Gibbs vs MH (Joint) vs MH (Block)",
+       x = "Iteration", y = expression(mu), colour = "") +
+  theme_bw(14)
+trace_s2_all <- ggplot(df_comp) +
+  geom_line(aes(iter, gibbs_sigma2, colour = "Gibbs"), alpha = 0.8) +
+  geom_line(aes(iter, mh_joint_sigma2, colour = "MH Joint"), alpha = 0.7) +
+  geom_line(aes(iter, mh_block_sigma2, colour = "MH Block"), alpha = 0.7) +
+  scale_colour_manual(values = c("Gibbs" = "firebrick",
+                                 "MH Joint" = "darkgreen",
+                                 "MH Block" = "darkorange")) +
+  labs(title = expression("Trace Plot for " * sigma^2 * ": Gibbs vs MH (Joint) vs MH (Block)"),
+       x = "Iteration", y = expression(sigma^2), colour = "") +
+  theme_bw(14)
+trace_mu_all / trace_s2_all
+
+# Density comparison (all three methods)
+dens_mu_all <- ggplot(df_comp) +
+  geom_density(aes(gibbs_mu, colour = "Gibbs"), adjust = 1.2, linewidth = 1) +
+  geom_density(aes(mh_joint_mu, colour = "MH Joint"), adjust = 1.2, linetype = 2, linewidth = 1) +
+  geom_density(aes(mh_block_mu, colour = "MH Block"), adjust = 1.2, linetype = 3, linewidth = 1) +
+  scale_colour_manual(values = c("Gibbs" = "steelblue",
+                                 "MH Joint" = "orange",
+                                 "MH Block" = "purple")) +
+  labs(title = "Posterior of μ",
+       x = expression(mu), y = "Density", colour = "") +
+  theme_bw(14)
+dens_s2_all <- ggplot(df_comp) +
+  geom_density(aes(gibbs_sigma2, colour = "Gibbs"), adjust = 1.2, linewidth = 1) +
+  geom_density(aes(mh_joint_sigma2, colour = "MH Joint"), adjust = 1.2, linetype = 2, linewidth = 1) +
+  geom_density(aes(mh_block_sigma2, colour = "MH Block"), adjust = 1.2, linetype = 3, linewidth = 1) +
+  scale_colour_manual(values = c("Gibbs" = "firebrick",
+                                 "MH Joint" = "darkgreen",
+                                 "MH Block" = "darkorange")) +
+  labs(title = expression("Posterior of " * sigma^2),
+       x = expression(sigma^2), y = "Density", colour = "") +
+  theme_bw(14)
+dens_mu_all | dens_s2_all
+
+# Joint posterior heatmaps (all three methods)
+mh_mu_q  <- quantile(c(df_comp$mh_joint_mu, df_comp$mh_block_mu), probs = c(0.005, 0.995))
+mh_s2_q  <- quantile(c(df_comp$mh_joint_sigma2, df_comp$mh_block_sigma2), probs = c(0.005, 0.995))
+zoom_x <- c(mh_mu_q[1], mh_mu_q[2])
+zoom_y <- c(mh_s2_q[1], mh_s2_q[2])
+
+heat_gibbs_zoom <- ggplot(df_comp, aes(gibbs_mu, gibbs_sigma2)) +
+  stat_density_2d_filled(contour_var = "density", alpha = 0.9) +
+  stat_density_2d(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_d(option = "C") +
+  coord_cartesian(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
+  labs(
+    title = "Joint Posterior Heatmap (Gibbs)",
+    x = expression(mu),
+    y = expression(sigma^2),
+    fill = "Density Level"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text  = element_text(size = 12),
+    panel.border = element_rect(linewidth = 0.8, color = "black"),
+    panel.grid = element_blank()
+  )
+
+heat_mh_joint_zoom <- ggplot(df_comp, aes(mh_joint_mu, mh_joint_sigma2)) +
+  stat_density_2d_filled(contour_var = "density", alpha = 0.9) +
+  stat_density_2d(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_d(option = "C") +
+  coord_cartesian(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
+  labs(
+    title = "Joint Posterior Heatmap (MH Joint)",
+    x = expression(mu),
+    y = expression(sigma^2),
+    fill = "Density Level"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text  = element_text(size = 12),
+    panel.border = element_rect(linewidth = 0.8, color = "black"),
+    panel.grid = element_blank()
+  )
+
+heat_mh_block_zoom <- ggplot(df_comp, aes(mh_block_mu, mh_block_sigma2)) +
+  stat_density_2d_filled(contour_var = "density", alpha = 0.9) +
+  stat_density_2d(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_d(option = "C") +
+  coord_cartesian(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
+  labs(
+    title = "Joint Posterior Heatmap (MH Block)",
+    x = expression(mu),
+    y = expression(sigma^2),
+    fill = "Density Level"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text  = element_text(size = 12),
+    panel.border = element_rect(linewidth = 0.8, color = "black"),
+    panel.grid = element_blank()
+  )
+
+heat_gibbs_zoom  
+heat_mh_joint_zoom 
+heat_mh_block_zoom
+
+# Comparison of acceptance rates and autocorrelation
+cat("\n=== Acceptance Rate Comparison ===\n")
+cat("MH Joint acceptance rate:", mh_out$acc_rate, "\n")
+cat("MH Block acceptance rate (μ):", mh_block_out$acc_rate_mu, "\n")
+cat("MH Block acceptance rate (λ):", mh_block_out$acc_rate_lambda, "\n")
+cat("MH Block overall acceptance rate:", mh_block_out$acc_rate_overall, "\n")
+
+# Compute autocorrelation for comparison
+acf_mu_gibbs <- acf(mus, plot = FALSE, lag.max = 50)
+acf_mu_joint <- acf(mh_out$mu, plot = FALSE, lag.max = 50)
+acf_mu_block <- acf(mh_block_out$mu, plot = FALSE, lag.max = 50)
+acf_s2_gibbs <- acf(sigma2, plot = FALSE, lag.max = 50)
+acf_s2_joint <- acf(mh_out$sigma2, plot = FALSE, lag.max = 50)
+acf_s2_block <- acf(mh_block_out$sigma2, plot = FALSE, lag.max = 50)
+
+cat("\n=== Autocorrelation at lag 1 ===\n")
+cat("μ - Gibbs:", acf_mu_gibbs$acf[2], "\n")
+cat("μ - MH Joint:", acf_mu_joint$acf[2], "\n")
+cat("μ - MH Block:", acf_mu_block$acf[2], "\n")
+cat("σ² - Gibbs:", acf_s2_gibbs$acf[2], "\n")
+cat("σ² - MH Joint:", acf_s2_joint$acf[2], "\n")
+cat("σ² - MH Block:", acf_s2_block$acf[2], "\n")
+
+# Autocorrelation plots
+acf_df_mu <- data.frame(
+  lag = 0:50,
+  Gibbs = acf_mu_gibbs$acf,
+  `MH Joint` = acf_mu_joint$acf,
+  `MH Block` = acf_mu_block$acf
+)
+acf_df_mu_long <- tidyr::pivot_longer(acf_df_mu, cols = -lag, names_to = "Method", values_to = "ACF")
+
+acf_df_s2 <- data.frame(
+  lag = 0:50,
+  Gibbs = acf_s2_gibbs$acf,
+  `MH Joint` = acf_s2_joint$acf,
+  `MH Block` = acf_s2_block$acf
+)
+acf_df_s2_long <- tidyr::pivot_longer(acf_df_s2, cols = -lag, names_to = "Method", values_to = "ACF")
+
+acf_plot_mu <- ggplot(acf_df_mu_long, aes(lag, ACF, colour = Method)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray") +
+  scale_colour_manual(values = c("Gibbs" = "steelblue",
+                                 "MH Joint" = "orange",
+                                 "MH Block" = "purple")) +
+  labs(title = "Autocorrelation Function for μ",
+       x = "Lag", y = "ACF", colour = "") +
+  theme_bw(14)
+
+acf_plot_s2 <- ggplot(acf_df_s2_long, aes(lag, ACF, colour = Method)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray") +
+  scale_colour_manual(values = c("Gibbs" = "firebrick",
+                                 "MH Joint" = "darkgreen",
+                                 "MH Block" = "darkorange")) +
+  labs(title = expression("Autocorrelation Function for " * sigma^2),
+       x = "Lag", y = "ACF", colour = "") +
+  theme_bw(14)
+
+acf_plot_mu | acf_plot_s2
+```
+
+# Conclusion
+
+This report has studied the theoretical properties and practical mixing behavior of the Metropolis--Hastings algorithm, demonstrating how proposal scale, burn-in, and parameterization critically affect acceptance rates, autocorrelation, and convergence. Through a multimodal example, we showed how the state-space geometry—characterized by separated modes and low-density valleys—directly impacts mixing efficiency. When the proposal scale is too small relative to the distance between modes, the chain exhibits high autocorrelation and fails to explore the full support of the target distribution, despite high acceptance rates. Conversely, poor initialization or inappropriate proposal scales lead to low acceptance rates and slow convergence, highlighting the importance of careful tuning.
+
+We implemented and compared both joint and block-update (Metropolis-within-Gibbs) schemes in R, using Gibbs sampling as a benchmark when full conditionals are tractable. The empirical comparison revealed important trade-offs: the joint update scheme can more directly traverse correlated posterior structures by proposing moves in both dimensions simultaneously, while the block-update scheme allows for component-specific tuning and can be more efficient when conditional distributions are well-behaved. The autocorrelation analysis quantified these differences, showing how the geometric structure of the posterior and the update scheme interact to determine mixing efficiency.
+
+Our comparison with Gibbs sampling highlighted the strengths of each approach in different scenarios. Gibbs sampling excels when full conditionals are available in closed form, providing automatic, efficient updates with no tuning required. Metropolis--Hastings is more flexible and applicable in non-conjugate or higher-dimensional settings, but requires careful design of the proposal distribution and scheme selection. Despite requiring tuning and reparameterization, both joint and block-update MH samplers produced posterior estimates that were nearly identical to those from the Gibbs sampler, demonstrating that when properly implemented, Metropolis--Hastings achieves comparable inferential accuracy while providing greater flexibility.
+
+The interpretation of slow mixing through state-space geometry and multi-modal structure provides a unifying framework for understanding MCMC behavior. The geometric perspective—visualizing the target as a landscape with peaks and valleys—explains why certain tuning choices succeed or fail, and why different update schemes exhibit different mixing properties. This geometric understanding is essential for practitioners who must make informed decisions about proposal design, parameterization, and update schemes in real applications.
+
+Overall, the Metropolis--Hastings algorithm provides a reliable and flexible tool for posterior sampling across a wide range of statistical applications. The key to successful implementation lies in understanding the theoretical properties, carefully analyzing mixing behavior through acceptance rates and autocorrelation, and selecting appropriate update schemes based on the geometric structure of the target distribution.
+
+# References
+
+
+

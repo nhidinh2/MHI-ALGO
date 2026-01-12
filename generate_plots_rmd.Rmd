@@ -1,0 +1,596 @@
+---
+title: "Generate All Plots - Metropolis-Hastings Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(patchwork)  
+library(mvtnorm)
+library(tidyr)
+set.seed(431)
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center", 
+                      fig.width = 10, fig.height = 6,
+                      warning = FALSE, message = FALSE)
+```
+
+# Metropolis-Hastings Sampler for Multimodal Example
+
+```{r MH-functions}
+# Target distribution (unnormalized)
+targetdist <- function(theta) {
+  exp(-theta^4/6 + theta^2/2) * cos(theta^3/4)
+}
+
+# Single MH update step
+MHstep <- function(theta_current, sig) {
+  theta_star <- rnorm(1, mean = theta_current, sd = sig)  # propose candidate θ*
+  accprob <- targetdist(theta_star) / targetdist(theta_current)  # acceptance probability
+  accprob <- min(1, accprob)
+  # accept or reject
+  u <- runif(1)
+  if (u <= accprob) {
+    theta_next <- theta_star
+    a <- 1
+  } else {
+    theta_next <- theta_current
+    a <- 0
+  }
+  return(list(theta1 = theta_next, a = a))
+}
+
+# Metropolis-Hastings Sampler
+MH_sampler <- function(nsamp, sig, burnin, lag, theta_current) {
+  theta_samples <- numeric(nsamp)
+  acc <- c(accepted = 0, proposed = 0)
+  theta <- theta_current   # starting value
+  # Burn-in
+  for (i in 1:burnin) {
+    step <- MHstep(theta, sig)
+    theta <- step$theta1
+    acc <- acc + c(step$a, 1)
+  }
+  # Main sampling
+  for (i in 1:nsamp) {
+    for (j in 1:lag) {
+      step <- MHstep(theta, sig)
+      theta <- step$theta1
+      acc <- acc + c(step$a, 1)
+    }
+    theta_samples[i] <- theta
+  }
+  return(list(samples = theta_samples, acc = acc))
+}
+
+# Visualization function
+plot_MH <- function(sig, nsamp = NULL, theta_initial = NULL) {
+  
+  # Pull global defaults if user does not override
+  if (is.null(nsamp)) nsamp <- get("nsamp", envir = .GlobalEnv)
+  if (is.null(theta_initial)) theta_initial <- get("theta_initial", envir = .GlobalEnv)
+  
+  # Run MH sampler
+  result <- MH_sampler(
+    nsamp = nsamp,
+    sig = sig,
+    burnin = burnin,
+    lag = lag,
+    theta_current = theta_initial   # pass renamed argument to MH sampler
+  )
+  
+  theta_vals <- result$samples
+  
+  # True normalized density
+  thetas <- seq(-3, 3, length.out = 500)
+  dens <- targetdist(thetas)
+  dens <- dens / sum(dens) / (thetas[2] - thetas[1])
+  
+  df_samples <- data.frame(theta = theta_vals)
+  df_true    <- data.frame(theta = thetas, y = dens)
+  
+  # Histogram + True Density 
+  p1 <- ggplot() +
+    geom_histogram(data = df_samples,
+                   aes(theta, y = ..density.., fill = "Samples"),
+                   bins = 30, color = "black") +
+    geom_line(data = df_true,
+              aes(theta, y, color = "True Density"),
+              size = 1.1) +
+    scale_color_manual(values = c("True Density" = "red")) +
+    scale_fill_manual(values = c("Samples" = "gray80")) +
+    labs(
+      title = paste0("Metropolis–Hastings Sampling (σ = ", sig, ")"),
+      subtitle = paste0(
+        "burn-in = ", burnin,
+        ",  nsamp = ", nsamp,
+        ",  initial θ = ", theta_initial
+      ),
+      x = expression(theta), y = "density",
+      color = "", fill = ""
+    ) +
+    theme_bw(base_size = 14)
+  
+  # Trace Plot
+  df_trace <- data.frame(iter = 1:length(theta_vals), value = theta_vals)
+  
+  p2 <- ggplot(df_trace, aes(iter, value)) +
+    geom_line(color = "black") +
+    labs(
+      title = "Trace Plot",
+      subtitle = paste0(
+        "burn-in = ", burnin,
+        ",  kept samples = ", nsamp,
+        ",  initial θ = ", theta_initial
+      ),
+      y = expression(theta~value),
+      x = "iteration"
+    ) +
+    theme_bw(base_size = 14)
+  
+  # Return stacked plots
+  p1 / p2
+}
+
+# Set parameters
+burnin <- 8000
+lag <- 1
+nsamp <- 50000
+theta_initial <- 0   # global default
+```
+
+## Plot 1: Well-tuned, centered start (σ = 1, θ_i = 0)
+
+```{r mh-plot1, fig.cap="Metropolis-Hastings Sampling (σ = 1, θ_i = 0)", fig.width=10, fig.height=6}
+p1 <- plot_MH(sig = 1, nsamp = 3000, theta_initial = 0)
+p1
+ggsave("images/σ = 1, θ_i = 0.png", plot = p1, width = 10, height = 6, dpi = 300)
+```
+
+## Plot 2: Same σ, bad initial value (σ = 1, θ_i = 6)
+
+```{r mh-plot2, fig.cap="Metropolis-Hastings Sampling (σ = 1, θ_i = 6)", fig.width=10, fig.height=6}
+p2 <- plot_MH(sig = 1, nsamp = 3000, theta_initial = 6)
+p2
+ggsave("images/σ = 1, θ_i = 6.png", plot = p2, width = 10, height = 6, dpi = 300)
+```
+
+## Plot 3: Smaller step size, slower mixing (σ = 0.01, θ_i = 0)
+
+```{r mh-plot3, fig.cap="Metropolis-Hastings Sampling (σ = 0.01, θ_i = 0)", fig.width=10, fig.height=6}
+p3 <- plot_MH(sig = 0.01, nsamp = 3000, theta_initial = 0)
+p3
+ggsave("images/σ = 0.01, θ_i = 0.png", plot = p3, width = 10, height = 6, dpi = 300)
+```
+
+# Gibbs Sampler for Normal Model with Semi-Conjugate Priors
+
+```{r gibbs-data}
+# Data summary
+n    <- 24
+ybar <- 7.8730           # sample mean
+s     <- 0.05353         # sample sd
+
+# Prior parameters
+mu0       <- 7.9876      # prior mean for mu
+sigma0.2  <- 0.000625    # prior variance of mu
+alpha     <- 2.5         # IG(alpha, beta)
+beta      <- 0.0043
+```
+
+```{r gibbs-sampler}
+# Run Gibbs sampler
+Nsim <- 100000               # total draws
+mus <- numeric(Nsim)         # store mu draws
+sigma2 <- numeric(Nsim)      # store sigma^2 draws
+
+# Initial values
+mus[1] <- 8
+SSE1   <- (n-1)*s^2 + n*(ybar - mus[1])^2
+sigma2[1] <- 1 / rgamma(1, n/2 + alpha, SSE1/2 + beta)
+
+# Gibbs updates
+for (k in 2:Nsim) {
+  # 1. Sample mu | sigma^2, y
+  var_mu  <- 1 / (n / sigma2[k-1] + 1 / sigma0.2)
+  mean_mu <- var_mu * (n*ybar / sigma2[k-1] + mu0 / sigma0.2)
+  mus[k] <- rnorm(1, mean_mu, sqrt(var_mu))
+  
+  # 2. Sample sigma^2 | mu, y
+  SSE <- (n-1)*s^2 + n*(ybar - mus[k])^2
+  sigma2[k] <- 1 / rgamma(1, n/2 + alpha, SSE/2 + beta)
+}
+
+# Posterior summaries
+cat("Posterior mean(mu):", mean(mus), "\n")
+cat("Posterior sd(mu):",   sd(mus), "\n")
+cat("95% CI for mu:\n"); print(quantile(mus, c(0.025, 0.975)))
+cat("\nPosterior mean(sigma^2):", mean(sigma2), "\n")
+cat("95% CI for sigma^2:\n"); print(quantile(sigma2, c(0.025, 0.975)))
+```
+
+## Plot 4: Gibbs Sampler Trace and Density Plots
+
+```{r gibbs-plot, fig.cap="Trace/Density for Gibbs Sampling", fig.width=12, fig.height=8}
+# Trace plots
+trace_mu <- ggplot(data.frame(iter = 1:Nsim, mu = mus),
+                   aes(iter, mu)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Trace Plot for μ",
+       x = "Iteration", y = expression(mu)) +
+  theme_bw(14)
+trace_sigma2 <- ggplot(data.frame(iter = 1:Nsim, sigma2 = sigma2),
+                       aes(iter, sigma2)) +
+  geom_line(color = "firebrick") +
+  labs(title = expression("Trace Plot for " * sigma^2),
+       x = "Iteration", y = expression(sigma^2)) +
+  theme_bw(14)
+
+# Posterior density plots
+dens_mu <- ggplot(data.frame(mu = mus), aes(mu)) +
+  geom_density(fill = "steelblue", alpha = 0.4) +
+  geom_vline(xintercept = mean(mus), color = "blue", linetype = 2) +
+  labs(title = "Posterior Density of μ",
+       x = expression(mu), y = "Density") +
+  theme_bw(14)
+dens_sigma2 <- ggplot(data.frame(sigma2 = sigma2), aes(sigma2)) +
+  geom_density(fill = "firebrick", alpha = 0.4) +
+  geom_vline(xintercept = mean(sigma2), color = "red", linetype = 2) +
+  labs(title = expression("Posterior Density of " * sigma^2),
+       x = expression(sigma^2), y = "Density") +
+  theme_bw(14)
+
+# Combined panels
+p_gibbs <- (trace_mu | trace_sigma2) / (dens_mu | dens_sigma2)
+p_gibbs
+ggsave("images/Densityplot_gibbs.png", plot = p_gibbs, width = 12, height = 8, dpi = 300)
+```
+
+# Metropolis-Hastings Sampler
+
+```{r mh-joint-functions}
+# Log-posterior for (mu, log_sigma2)
+log_post <- function(mu, log_sigma2) {
+  sigma2 <- exp(log_sigma2)
+  
+  # SSE(mu) using sufficient stats
+  SSE <- (n - 1)*s^2 + n*(ybar - mu)^2
+  
+  # log-likelihood: N(mu, sigma2) for n observations
+  lp_y <- -(n/2) * log(2*pi*sigma2) - SSE/(2*sigma2)
+  
+  # prior for mu ~ N(mu0, sigma0^2)
+  lp_mu <- dnorm(mu, mean = mu0, sd = sqrt(sigma0.2), log = TRUE)
+  
+  # prior for sigma2 ~ IG(alpha, beta), up to constants:
+  # p(sigma2) ∝ (sigma2)^-(alpha+1) exp(-beta/sigma2)
+  lp_s2 <- -(alpha + 1)*log(sigma2) - beta/sigma2
+  
+  # Jacobian for transform sigma2 = exp(log_sigma2)
+  lp_jac <- log_sigma2
+  return(lp_y + lp_mu + lp_s2 + lp_jac)
+} 
+
+# MH sampler for joint update
+mh_sampler <- function(Nsim, start_mu, start_log_s2,
+                       prop_sd_mu, prop_sd_log_s2) {
+  mu     <- numeric(Nsim)
+  log_s2 <- numeric(Nsim)
+  mu[1]     <- start_mu
+  log_s2[1] <- start_log_s2
+  acc <- 0
+  
+  for (k in 2:Nsim) {
+    # Propose new (mu, log_sigma2) with Gaussian random walk
+    mu_prop     <- rnorm(1, mean = mu[k-1],     sd = prop_sd_mu)
+    log_s2_prop <- rnorm(1, mean = log_s2[k-1], sd = prop_sd_log_s2)
+    
+    # Log acceptance ratio (symmetric proposal ⇒ q cancels)
+    log_alpha <- log_post(mu_prop, log_s2_prop) -
+                 log_post(mu[k-1], log_s2[k-1])
+    
+    if (log(runif(1)) < log_alpha) {
+      # accept
+      mu[k]     <- mu_prop
+      log_s2[k] <- log_s2_prop
+      acc <- acc + 1
+    } else {
+      # reject (stay at previous)
+      mu[k]     <- mu[k-1]
+      log_s2[k] <- log_s2[k-1]
+    }
+  }
+  
+  list(mu = mu,
+       sigma2 = exp(log_s2),
+       acc_rate = acc / (Nsim - 1))
+}
+```
+
+```{r mh-run-sampler}
+# Run MH sampler (joint update)
+mh_out <- mh_sampler(
+  Nsim          = Nsim,
+  start_mu      = mus[1],
+  start_log_s2  = log(sigma2[1]),
+  prop_sd_mu    = 0.005,   # tune these
+  prop_sd_log_s2 = 0.05
+)
+
+cat("MH (joint) acceptance rate:", mh_out$acc_rate, "\n")
+```
+
+### Metropolis-Hastings Sampler: Block-Update Scheme
+
+```{r mh-block-implementation}
+# MH sampler for block-update (Metropolis-within-Gibbs)
+mh_block_sampler <- function(Nsim, start_mu, start_log_s2,
+                            prop_sd_mu, prop_sd_log_s2) {
+  mu     <- numeric(Nsim)
+  log_s2 <- numeric(Nsim)
+  mu[1]     <- start_mu
+  log_s2[1] <- start_log_s2
+  acc_mu <- 0
+  acc_lambda <- 0
+  
+  for (k in 2:Nsim) {
+    # Block 1: Update mu given current lambda
+    mu_prop <- rnorm(1, mean = mu[k-1], sd = prop_sd_mu)
+    log_alpha_mu <- log_post(mu_prop, log_s2[k-1]) -
+                    log_post(mu[k-1], log_s2[k-1])
+    
+    if (log(runif(1)) < log_alpha_mu) {
+      mu[k] <- mu_prop
+      acc_mu <- acc_mu + 1
+    } else {
+      mu[k] <- mu[k-1]
+    }
+    
+    # Block 2: Update lambda given current mu
+    log_s2_prop <- rnorm(1, mean = log_s2[k-1], sd = prop_sd_log_s2)
+    log_alpha_lambda <- log_post(mu[k], log_s2_prop) -
+                        log_post(mu[k], log_s2[k-1])
+    
+    if (log(runif(1)) < log_alpha_lambda) {
+      log_s2[k] <- log_s2_prop
+      acc_lambda <- acc_lambda + 1
+    } else {
+      log_s2[k] <- log_s2[k-1]
+    }
+  }
+  
+  list(mu = mu,
+       sigma2 = exp(log_s2),
+       acc_rate_mu = acc_mu / (Nsim - 1),
+       acc_rate_lambda = acc_lambda / (Nsim - 1),
+       acc_rate_overall = (acc_mu + acc_lambda) / (2 * (Nsim - 1)))
+}
+
+# Run block-update MH sampler
+mh_block_out <- mh_block_sampler(
+  Nsim          = Nsim,
+  start_mu      = mus[1],
+  start_log_s2  = log(sigma2[1]),
+  prop_sd_mu    = 0.005,   # same as joint update
+  prop_sd_log_s2 = 0.05
+)
+
+cat("MH (block) acceptance rate for μ:", mh_block_out$acc_rate_mu, "\n")
+cat("MH (block) acceptance rate for λ:", mh_block_out$acc_rate_lambda, "\n")
+cat("MH (block) overall acceptance rate:", mh_block_out$acc_rate_overall, "\n")
+```
+
+# Comparison Plots
+
+```{r comparison-data}
+# Comparison data frame including block-update
+df_comp <- data.frame(
+  iter          = 1:Nsim,
+  gibbs_mu      = mus,
+  mh_joint_mu   = mh_out$mu,
+  mh_block_mu   = mh_block_out$mu,
+  gibbs_sigma2  = sigma2,
+  mh_joint_sigma2 = mh_out$sigma2,
+  mh_block_sigma2 = mh_block_out$sigma2
+)
+```
+
+## Plot 5: Trace Plot Comparison (All Three Methods)
+
+```{r trace-comparison, fig.cap="Trace Plot comparison: Gibbs vs MH (Joint) vs MH (Block)", fig.width=12, fig.height=6}
+# Trace Plot comparison (all three methods)
+trace_mu_all <- ggplot(df_comp) +
+  geom_line(aes(iter, gibbs_mu, colour = "Gibbs"), alpha = 0.8) +
+  geom_line(aes(iter, mh_joint_mu, colour = "MH Joint"), alpha = 0.7) +
+  geom_line(aes(iter, mh_block_mu, colour = "MH Block"), alpha = 0.7) +
+  scale_colour_manual(values = c("Gibbs" = "steelblue",
+                                 "MH Joint" = "orange",
+                                 "MH Block" = "purple")) +
+  labs(title = "Trace Plot for μ: Gibbs vs MH (Joint) vs MH (Block)",
+       x = "Iteration", y = expression(mu), colour = "") +
+  theme_bw(14)
+trace_s2_all <- ggplot(df_comp) +
+  geom_line(aes(iter, gibbs_sigma2, colour = "Gibbs"), alpha = 0.8) +
+  geom_line(aes(iter, mh_joint_sigma2, colour = "MH Joint"), alpha = 0.7) +
+  geom_line(aes(iter, mh_block_sigma2, colour = "MH Block"), alpha = 0.7) +
+  scale_colour_manual(values = c("Gibbs" = "firebrick",
+                                 "MH Joint" = "darkgreen",
+                                 "MH Block" = "darkorange")) +
+  labs(title = expression("Trace Plot for " * sigma^2 * ": Gibbs vs MH (Joint) vs MH (Block)"),
+       x = "Iteration", y = expression(sigma^2), colour = "") +
+  theme_bw(14)
+trace_mu_all / trace_s2_all
+```
+
+## Plot 6: Posterior Comparison (Gibbs vs MH Joint)
+
+```{r posterior-comparison, fig.cap="Posterior comparison: Gibbs vs. Metropolis--Hastings", fig.width=12, fig.height=5}
+# Density comparison (Gibbs vs MH Joint only for this plot)
+dens_mu_all <- ggplot(df_comp) +
+  geom_density(aes(gibbs_mu, colour = "Gibbs"), adjust = 1.2, linewidth = 1) +
+  geom_density(aes(mh_joint_mu, colour = "MH Joint"), adjust = 1.2, linetype = 2, linewidth = 1) +
+  scale_colour_manual(values = c("Gibbs" = "steelblue",
+                                 "MH Joint" = "orange")) +
+  labs(title = "Posterior of μ",
+       x = expression(mu), y = "Density", colour = "") +
+  theme_bw(14)
+dens_s2_all <- ggplot(df_comp) +
+  geom_density(aes(gibbs_sigma2, colour = "Gibbs"), adjust = 1.2, linewidth = 1) +
+  geom_density(aes(mh_joint_sigma2, colour = "MH Joint"), adjust = 1.2, linetype = 2, linewidth = 1) +
+  scale_colour_manual(values = c("Gibbs" = "firebrick",
+                                 "MH Joint" = "darkgreen")) +
+  labs(title = expression("Posterior of " * sigma^2),
+       x = expression(sigma^2), y = "Density", colour = "") +
+  theme_bw(14)
+
+# Combined posterior comparison plot
+p_posterior <- dens_mu_all | dens_s2_all
+p_posterior
+ggsave("images/Posterior(Gibbs V.S. MH).png", plot = p_posterior, width = 12, height = 5, dpi = 300)
+```
+
+## Plot 7: Heatmaps (All Three Methods)
+
+```{r heatmaps-all, fig.cap="Joint posterior heatmaps", fig.width=10, fig.height=8, fig.show="hold"}
+# Joint posterior heatmaps (all three methods)
+mh_mu_q  <- quantile(c(df_comp$mh_joint_mu, df_comp$mh_block_mu), probs = c(0.005, 0.995))
+mh_s2_q  <- quantile(c(df_comp$mh_joint_sigma2, df_comp$mh_block_sigma2), probs = c(0.005, 0.995))
+zoom_x <- c(mh_mu_q[1], mh_mu_q[2])
+zoom_y <- c(mh_s2_q[1], mh_s2_q[2])
+
+heat_gibbs_zoom <- ggplot(df_comp, aes(gibbs_mu, gibbs_sigma2)) +
+  stat_density_2d_filled(contour_var = "density", alpha = 0.9) +
+  stat_density_2d(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_d(option = "C") +
+  coord_cartesian(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
+  labs(
+    title = "Joint Posterior Heatmap (Gibbs)",
+    x = expression(mu),
+    y = expression(sigma^2),
+    fill = "Density Level"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text  = element_text(size = 12),
+    panel.border = element_rect(linewidth = 0.8, color = "black"),
+    panel.grid = element_blank()
+  )
+heat_gibbs_zoom
+ggsave("images/Heatmap(Gibbs).png", plot = heat_gibbs_zoom, width = 10, height = 8, dpi = 300)
+
+heat_mh_joint_zoom <- ggplot(df_comp, aes(mh_joint_mu, mh_joint_sigma2)) +
+  stat_density_2d_filled(contour_var = "density", alpha = 0.9) +
+  stat_density_2d(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_d(option = "C") +
+  coord_cartesian(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
+  labs(
+    title = "Joint Posterior Heatmap (MH Joint)",
+    x = expression(mu),
+    y = expression(sigma^2),
+    fill = "Density Level"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text  = element_text(size = 12),
+    panel.border = element_rect(linewidth = 0.8, color = "black"),
+    panel.grid = element_blank()
+  )
+heat_mh_joint_zoom
+ggsave("images/Heatmap(MH).png", plot = heat_mh_joint_zoom, width = 10, height = 8, dpi = 300)
+
+heat_mh_block_zoom <- ggplot(df_comp, aes(mh_block_mu, mh_block_sigma2)) +
+  stat_density_2d_filled(contour_var = "density", alpha = 0.9) +
+  stat_density_2d(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_d(option = "C") +
+  coord_cartesian(xlim = zoom_x, ylim = zoom_y, expand = FALSE) +
+  labs(
+    title = "Joint Posterior Heatmap (MH Block)",
+    x = expression(mu),
+    y = expression(sigma^2),
+    fill = "Density Level"
+  ) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    legend.text  = element_text(size = 12),
+    panel.border = element_rect(linewidth = 0.8, color = "black"),
+    panel.grid = element_blank()
+  )
+heat_mh_block_zoom
+```
+
+## Plot 8: Acceptance Rates and Autocorrelation Analysis
+
+```{r acceptance-autocorr, fig.cap="Autocorrelation Function comparison", fig.width=12, fig.height=6}
+# Comparison of acceptance rates and autocorrelation
+cat("\n=== Acceptance Rate Comparison ===\n")
+cat("MH Joint acceptance rate:", mh_out$acc_rate, "\n")
+cat("MH Block acceptance rate (μ):", mh_block_out$acc_rate_mu, "\n")
+cat("MH Block acceptance rate (λ):", mh_block_out$acc_rate_lambda, "\n")
+cat("MH Block overall acceptance rate:", mh_block_out$acc_rate_overall, "\n")
+
+# Compute autocorrelation for comparison
+acf_mu_gibbs <- acf(mus, plot = FALSE, lag.max = 50)
+acf_mu_joint <- acf(mh_out$mu, plot = FALSE, lag.max = 50)
+acf_mu_block <- acf(mh_block_out$mu, plot = FALSE, lag.max = 50)
+acf_s2_gibbs <- acf(sigma2, plot = FALSE, lag.max = 50)
+acf_s2_joint <- acf(mh_out$sigma2, plot = FALSE, lag.max = 50)
+acf_s2_block <- acf(mh_block_out$sigma2, plot = FALSE, lag.max = 50)
+
+cat("\n=== Autocorrelation at lag 1 ===\n")
+cat("μ - Gibbs:", acf_mu_gibbs$acf[2], "\n")
+cat("μ - MH Joint:", acf_mu_joint$acf[2], "\n")
+cat("μ - MH Block:", acf_mu_block$acf[2], "\n")
+cat("σ² - Gibbs:", acf_s2_gibbs$acf[2], "\n")
+cat("σ² - MH Joint:", acf_s2_joint$acf[2], "\n")
+cat("σ² - MH Block:", acf_s2_block$acf[2], "\n")
+
+# Autocorrelation plots
+acf_df_mu <- data.frame(
+  lag = 0:50,
+  Gibbs = acf_mu_gibbs$acf,
+  `MH Joint` = acf_mu_joint$acf,
+  `MH Block` = acf_mu_block$acf
+)
+acf_df_mu_long <- tidyr::pivot_longer(acf_df_mu, cols = -lag, names_to = "Method", values_to = "ACF")
+
+acf_df_s2 <- data.frame(
+  lag = 0:50,
+  Gibbs = acf_s2_gibbs$acf,
+  `MH Joint` = acf_s2_joint$acf,
+  `MH Block` = acf_s2_block$acf
+)
+acf_df_s2_long <- tidyr::pivot_longer(acf_df_s2, cols = -lag, names_to = "Method", values_to = "ACF")
+
+acf_plot_mu <- ggplot(acf_df_mu_long, aes(lag, ACF, colour = Method)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray") +
+  scale_colour_manual(values = c("Gibbs" = "steelblue",
+                                 "MH Joint" = "orange",
+                                 "MH Block" = "purple")) +
+  labs(title = "Autocorrelation Function for μ",
+       x = "Lag", y = "ACF", colour = "") +
+  theme_bw(14)
+
+acf_plot_s2 <- ggplot(acf_df_s2_long, aes(lag, ACF, colour = Method)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray") +
+  scale_colour_manual(values = c("Gibbs" = "firebrick",
+                                 "MH Joint" = "darkgreen",
+                                 "MH Block" = "darkorange")) +
+  labs(title = expression("Autocorrelation Function for " * sigma^2),
+       x = "Lag", y = "ACF", colour = "") +
+  theme_bw(14)
+
+acf_plot_mu | acf_plot_s2
+```
